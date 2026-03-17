@@ -58,7 +58,7 @@ if player_name:
                 opponent_row = game_lines[game_lines["TEAM_ID"] == opponent_id]
                 matchup_text = f"{team_abbr} @ {opponent_row.iloc[0]['TEAM_ABBREVIATION']}"
 
-            game_date = game["GAME_DATE_EST"]
+            game_date = pd.to_datetime(game["GAME_DATE_EST"]).strftime("%B %d, %Y")
             game_time = game["GAME_STATUS_TEXT"]
 
             st.write(f"Matchup: {matchup_text}")
