@@ -1,5 +1,3 @@
-!pip install streamlit nba_api
-
 import streamlit as st
 import pandas as pd
 import joblib
@@ -7,21 +5,20 @@ import joblib
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog
 
-st.title("NBA 20+ Point Predictor")
+st.title("NBA Points Prop Predictor")
 
-model = joblib.load("models/points20_classifier.pkl")
+model = joblib.load("models/points_regression.pkl")
 
 player_name = st.text_input("Enter player name")
+line = st.number_input("Enter points line", min_value=0.0, value=20.5, step=0.5)
 
 if player_name:
+    player_list = players.find_players_by_full_name(player_name)
 
-    player_dict = players.find_players_by_full_name(player_name)
-
-    if len(player_dict) == 0:
+    if not player_list:
         st.write("Player not found")
     else:
-
-        player_id = player_dict[0]["id"]
+        player_id = player_list[0]["id"]
 
         gamelog = playergamelog.PlayerGameLog(
             player_id=player_id,
@@ -55,32 +52,29 @@ if player_name:
         df["last5_gmsc"] = df["gmsc"].shift(1).rolling(5).mean()
         df["last10_gmsc"] = df["gmsc"].shift(1).rolling(10).mean()
 
-        df = df.dropna()
+        df = df.dropna().reset_index(drop=True)
 
         latest = df.iloc[-1]
 
-        X = pd.DataFrame([[
-            latest["last5_pts"],
-            latest["last10_pts"],
-            latest["last5_gmsc"],
-            latest["last10_gmsc"],
-            latest["last5_minutes"],
-            latest["last5_fg_pct"]
-        ]],
-        columns=[
-            "last5_pts",
-            "last10_pts",
-            "last5_gmsc",
-            "last10_gmsc",
-            "last5_minutes",
-            "last5_fg_pct"
-        ])
+        X = pd.DataFrame([{
+            "last5_pts": latest["last5_pts"],
+            "last10_pts": latest["last10_pts"],
+            "last5_gmsc": latest["last5_gmsc"],
+            "last10_gmsc": latest["last10_gmsc"],
+            "last5_minutes": latest["last5_minutes"],
+            "last5_fg_pct": latest["last5_fg_pct"]
+        }])
 
-        prob = model.predict_proba(X)[0][1]
+        predicted_points = model.predict(X)[0]
+        edge = predicted_points - line
 
-        st.write("Probability of 20+ points:", round(prob, 3))
+        st.write("Predicted points:", round(predicted_points, 2))
+        st.write("Line:", line)
+        st.write("Edge:", round(edge, 2))
 
-        if prob >= 0.55:
-            st.success("Lean Over 20")
+        if edge >= 1.0:
+            st.success("Lean Over")
+        elif edge <= -1.0:
+            st.warning("Lean Under")
         else:
-            st.warning("Lean Under 20")
+            st.info("No Edge")
