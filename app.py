@@ -6,6 +6,8 @@ from datetime import datetime
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
+st.write("NEW VERSION LOADED")
+
 st.title("NBA Points Prop Predictor")
 
 model = joblib.load("models/points_regression.pkl")
