@@ -14,7 +14,7 @@ from datetime import datetime
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
-APP_VERSION = "v1.10"
+APP_VERSION = "v1.11"
 
 
 st.set_page_config(
@@ -839,11 +839,11 @@ if selected_player:
         <div class="prob-interpretation" style="
         margin-top: 12px;
         padding: 10px 14px;
-        font-size: 1.5rem;
+        font-size: 1.2rem;
         color: #cbd5e1;
         opacity: 0.9;
         ">
-        According to the model, there is a <b>{prob_over:.0%}</b> chance to hit the over and a <b>{prob_under:.0%}</b> chance to hit the under.
+        According to the model, there is a <b>{prob_over:.0%}</b> chance to hit the <b>Over</b> and a <b>{prob_under:.0%}</b> chance to hit the <b>Under</b>.
         </div>
         
         <div class="small-note">
