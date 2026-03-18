@@ -505,6 +505,7 @@ if selected_player:
                 game_date = "N/A"
                 game_time = "N/A"
 
+        
         # -----------------------------
         # Pull sportsbook line
         # -----------------------------
