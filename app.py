@@ -539,7 +539,7 @@ if selected_player:
                 
                                 for outcome in market.get("outcomes", []):
                                     st.write(outcome)
-                                    prop = extract_player_prop(event_odds, selected_player)
+                    prop = extract_player_prop(event_odds, selected_player)
                         
                     if prop:
                         sportsbook_line = prop["line"]
