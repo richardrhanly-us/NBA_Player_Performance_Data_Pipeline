@@ -25,81 +25,82 @@ st.set_page_config(
 st.markdown("""
 <style>
     .stApp {
-        background: linear-gradient(180deg, #0b1220 0%, #111827 100%);
-        color: #f3f4f6;
+        background: linear-gradient(180deg, #081120 0%, #0f172a 100%);
+        color: #f8fafc;
     }
 
     .block-container {
-        padding-top: 2rem;
+        padding-top: 1.5rem;
         padding-bottom: 3rem;
         max-width: 900px;
     }
 
     h1, h2, h3 {
-        color: #f9fafb;
+        color: #f8fafc;
         letter-spacing: 0.2px;
     }
 
     .hero {
-        background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
+        background: linear-gradient(135deg, #111827 0%, #1e293b 100%);
         border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 20px;
-        padding: 24px 24px 20px 24px;
+        border-radius: 22px;
+        padding: 26px 24px 20px 24px;
         margin-bottom: 20px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.28);
     }
 
     .hero-title {
-        font-size: 2rem;
+        font-size: 2.1rem;
         font-weight: 800;
-        margin-bottom: 4px;
+        margin-bottom: 6px;
+        color: #ffffff;
     }
 
     .hero-subtitle {
-        color: #9ca3af;
-        font-size: 0.95rem;
+        color: #cbd5e1;
+        font-size: 1rem;
         margin-bottom: 0;
     }
 
     .section-card {
-        background: rgba(17, 24, 39, 0.92);
+        background: rgba(15, 23, 42, 0.95);
         border: 1px solid rgba(255,255,255,0.08);
         border-radius: 18px;
         padding: 20px;
         margin-top: 18px;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.20);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.22);
     }
 
     .section-title {
         font-size: 1.2rem;
         font-weight: 700;
         margin-bottom: 14px;
-        color: #f9fafb;
+        color: #f8fafc;
     }
 
     .stat-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 12px;
-        margin-top: 10px;
+        margin-top: 8px;
     }
 
     .stat-box {
-        background: #0f172a;
+        background: #111827;
         border: 1px solid rgba(255,255,255,0.06);
         border-radius: 14px;
         padding: 14px;
     }
 
     .stat-label {
-        color: #9ca3af;
+        color: #94a3b8;
         font-size: 0.82rem;
         margin-bottom: 6px;
     }
 
     .stat-value {
-        color: #f9fafb;
-        font-size: 1.15rem;
+        color: #f8fafc;
+        font-size: 1.12rem;
         font-weight: 700;
     }
 
@@ -119,26 +120,25 @@ st.markdown("""
     }
 
     .pick-under {
-        background: rgba(245, 158, 11, 0.14);
+        background: rgba(245, 158, 11, 0.15);
         color: #fbbf24;
         border: 1px solid rgba(251, 191, 36, 0.22);
     }
 
+    .pick-none {
+        background: rgba(59, 130, 246, 0.14);
+        color: #60a5fa;
+        border: 1px solid rgba(96, 165, 250, 0.22);
+    }
+
     .small-note {
-        color: #9ca3af;
-        font-size: 0.85rem;
-        margin-top: 8px;
+        color: #94a3b8;
+        font-size: 0.86rem;
+        margin-top: 10px;
     }
 
-    .divider {
-        height: 1px;
-        background: rgba(255,255,255,0.08);
-        margin: 14px 0 8px 0;
-    }
-
-    /* Inputs */
     .stSelectbox label, .stNumberInput label {
-        color: #d1d5db !important;
+        color: #e5e7eb !important;
         font-weight: 600;
     }
 
@@ -161,70 +161,91 @@ st.markdown("""
         border: none !important;
     }
 
-    .metric-pill {
-        display: inline-block;
-        padding: 4px 10px;
-        border-radius: 999px;
-        font-size: 0.82rem;
-        font-weight: 700;
-        margin-left: 6px;
-    }
-
-    .green-pill {
-        background: rgba(16, 185, 129, 0.15);
-        color: #34d399;
-    }
-
-    .red-pill {
-        background: rgba(239, 68, 68, 0.16);
-        color: #f87171;
-    }
-
-    .yellow-pill {
-        background: rgba(245, 158, 11, 0.16);
-        color: #fbbf24;
+    .stDataFrame {
+        border-radius: 12px;
+        overflow: hidden;
     }
 </style>
 """, unsafe_allow_html=True)
 
+
 # -----------------------------
 # Helpers
 # -----------------------------
-def get_pick_label(edge_value):
-    if edge_value > 0:
+@st.cache_resource
+def load_model():
+    return joblib.load("models/points_regression.pkl")
+
+
+@st.cache_data
+def load_model_stats():
+    with open("models/points_model_stats.json", "r") as f:
+        return json.load(f)
+
+
+@st.cache_data
+def load_players():
+    all_players = players.get_players()
+    name_map = {p["full_name"]: p["id"] for p in all_players}
+    return all_players, name_map, sorted(name_map.keys())
+
+
+def get_pick_label(prob_over, prob_under):
+    if prob_over >= 0.60:
         return "Lean Over", "pick-over"
-    else:
+    if prob_under >= 0.60:
         return "Lean Under", "pick-under"
+    return "No Edge", "pick-none"
 
 
-def format_edge(edge_value):
-    sign = "+" if edge_value > 0 else ""
-    return f"{sign}{edge_value:.2f}"
+def get_team_game_info(team_id, team_abbr, target_date_str):
+    board = scoreboardv2.ScoreboardV2(game_date=target_date_str)
+    game_header = board.game_header.get_data_frame()
+    line_score = board.line_score.get_data_frame()
 
+    team_game = game_header[
+        (game_header["HOME_TEAM_ID"] == team_id) |
+        (game_header["VISITOR_TEAM_ID"] == team_id)
+    ]
 
-def safe_float(value, default=0.0):
-    try:
-        return float(value)
-    except:
-        return default
+    if team_game.empty:
+        return None
+
+    game = team_game.iloc[0]
+    game_id = game["GAME_ID"]
+
+    game_lines = line_score[
+        line_score["GAME_ID"] == game_id
+    ][["TEAM_ID", "TEAM_ABBREVIATION"]]
+
+    if int(game["HOME_TEAM_ID"]) == team_id:
+        opponent_id = int(game["VISITOR_TEAM_ID"])
+        opponent_row = game_lines[game_lines["TEAM_ID"] == opponent_id]
+        matchup_text = f"{team_abbr} vs {opponent_row.iloc[0]['TEAM_ABBREVIATION']}"
+    else:
+        opponent_id = int(game["HOME_TEAM_ID"])
+        opponent_row = game_lines[game_lines["TEAM_ID"] == opponent_id]
+        matchup_text = f"{team_abbr} @ {opponent_row.iloc[0]['TEAM_ABBREVIATION']}"
+
+    game_date = pd.to_datetime(game["GAME_DATE_EST"]).strftime("%B %d, %Y")
+    game_time = game["GAME_STATUS_TEXT"]
+
+    return {
+        "matchup": matchup_text,
+        "date": game_date,
+        "time": game_time
+    }
 
 
 # -----------------------------
-# Load model + stats
+# Load resources
 # -----------------------------
-model = joblib.load("models/points_regression.pkl")
-
-with open("models/points_model_stats.json", "r") as f:
-    model_stats = json.load(f)
-
+model = load_model()
+model_stats = load_model_stats()
 points_std = model_stats["std_dev"]
 
-# -----------------------------
-# Player list
-# -----------------------------
-all_players = players.get_players()
-player_name_map = {p["full_name"]: p["id"] for p in all_players}
-player_names = sorted(player_name_map.keys())
+_, player_name_map, player_names = load_players()
+
 
 # -----------------------------
 # Header
@@ -235,6 +256,7 @@ st.markdown("""
     <p class="hero-subtitle">Search a player, set the line, and get a quick model-based lean.</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 # -----------------------------
 # Inputs
@@ -251,111 +273,140 @@ selected_player = st.selectbox(
 line = st.number_input(
     "Enter points line",
     min_value=0.0,
-    max_value=100.0,
     value=20.5,
     step=0.5
 )
 
+
 # -----------------------------
-# Main logic
+# Main app
 # -----------------------------
 if selected_player:
-    player_id = player_name_map[selected_player]
-
     try:
-        # ---------------------------------
-        # Pull recent game log
-        # ---------------------------------
-        gamelog = playergamelog.PlayerGameLog(player_id=player_id, season="2025-26")
+        player_id = player_name_map[selected_player]
+
+        # -----------------------------
+        # Current player/team info
+        # -----------------------------
+        player_info = commonplayerinfo.CommonPlayerInfo(player_id=player_id).get_data_frames()[0]
+        team_id = int(player_info.loc[0, "TEAM_ID"])
+        team_abbr = player_info.loc[0, "TEAM_ABBREVIATION"]
+
+        eastern = pytz.timezone("US/Eastern")
+        now_et = datetime.now(eastern)
+
+        if now_et.hour < 4:
+            now_et = now_et - pd.Timedelta(days=1)
+
+        today_str = now_et.strftime("%m/%d/%Y")
+        today_game_info = get_team_game_info(team_id, team_abbr, today_str)
+
+        game_status = ""
+        matchup = ""
+        game_date = ""
+        game_time = ""
+
+        if today_game_info:
+            game_status = "Game today"
+            matchup = today_game_info["matchup"]
+            game_date = today_game_info["date"]
+            game_time = today_game_info["time"]
+        else:
+            next_game_info = None
+
+            for i in range(1, 8):
+                future_date = now_et + pd.Timedelta(days=i)
+                future_date_str = future_date.strftime("%m/%d/%Y")
+                next_game_info = get_team_game_info(team_id, team_abbr, future_date_str)
+
+                if next_game_info:
+                    break
+
+            if next_game_info:
+                game_status = "No game today"
+                matchup = next_game_info["matchup"]
+                game_date = next_game_info["date"]
+                game_time = next_game_info["time"]
+            else:
+                game_status = "No game found"
+                matchup = "N/A"
+                game_date = "N/A"
+                game_time = "N/A"
+
+        # -----------------------------
+        # Game log / model features
+        # -----------------------------
+        gamelog = playergamelog.PlayerGameLog(
+            player_id=player_id,
+            season="2025-26"
+        )
+
         df = gamelog.get_data_frames()[0]
 
         if df.empty:
-            st.warning("No recent game log found for this player.")
+            st.warning("No game log found for this player yet.")
             st.stop()
 
-        # Example feature setup
-        recent_games = df.head(10).copy()
-        recent_games["PTS"] = pd.to_numeric(recent_games["PTS"], errors="coerce")
-        recent_games["MIN"] = pd.to_numeric(recent_games["MIN"], errors="coerce")
+        df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"])
+        df = df.sort_values("GAME_DATE").reset_index(drop=True)
 
-        avg_pts_last_10 = recent_games["PTS"].mean()
-        avg_min_last_10 = recent_games["MIN"].mean()
+        numeric_cols = [
+            "PTS", "FGM", "FGA", "FTA", "FTM", "OREB", "DREB",
+            "STL", "AST", "BLK", "PF", "TOV", "MIN"
+        ]
+        for col in numeric_cols:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
-        latest_game = df.iloc[0]
-        matchup = latest_game.get("MATCHUP", "N/A")
+        # Game Score
+        df["gmsc"] = (
+            df["PTS"]
+            + 0.4 * df["FGM"]
+            - 0.7 * df["FGA"]
+            - 0.4 * (df["FTA"] - df["FTM"])
+            + 0.7 * df["OREB"]
+            + 0.3 * df["DREB"]
+            + df["STL"]
+            + 0.7 * df["AST"]
+            + 0.7 * df["BLK"]
+            - 0.4 * df["PF"]
+            - df["TOV"]
+        )
 
-        # ---------------------------------
-        # Very basic example feature frame
-        # Replace/add your real model inputs here
-        # ---------------------------------
-        feature_data = pd.DataFrame([{
-            "avg_pts_last_10": safe_float(avg_pts_last_10),
-            "avg_min_last_10": safe_float(avg_min_last_10),
+        # Exact feature names from your trained model
+        df["player_avg_pts"] = df["PTS"].shift(1).expanding().mean()
+        df["last5_pts"] = df["PTS"].shift(1).rolling(5).mean()
+        df["last5_fga"] = df["FGA"].shift(1).rolling(5).mean()
+        df["last5_fta"] = df["FTA"].shift(1).rolling(5).mean()
+        df["last5_minutes"] = df["MIN"].shift(1).rolling(5).mean()
+        df["last5_gmsc"] = df["gmsc"].shift(1).rolling(5).mean()
+
+        df_features = df.dropna().reset_index(drop=True)
+
+        if df_features.empty:
+            st.warning("Not enough recent games to build features yet.")
+            st.stop()
+
+        latest = df_features.iloc[-1]
+
+        X = pd.DataFrame([{
+            "player_avg_pts": latest["player_avg_pts"],
+            "last5_pts": latest["last5_pts"],
+            "last5_fga": latest["last5_fga"],
+            "last5_fta": latest["last5_fta"],
+            "last5_minutes": latest["last5_minutes"],
+            "last5_gmsc": latest["last5_gmsc"]
         }])
 
-        predicted_points = float(model.predict(feature_data)[0])
-
+        predicted_points = float(model.predict(X)[0])
         edge = predicted_points - line
+
         prob_over = 1 - norm.cdf(line, loc=predicted_points, scale=points_std)
         prob_under = 1 - prob_over
 
-        pick_text, pick_class = get_pick_label(edge)
-
-        # ---------------------------------
-        # Next game info
-        # ---------------------------------
-        next_game_status = "No game today"
-        next_matchup = "N/A"
-        next_date = "N/A"
-        next_time = "N/A"
-
-        try:
-            eastern = pytz.timezone("US/Eastern")
-            today = datetime.now(eastern).strftime("%Y-%m-%d")
-
-            scoreboard = scoreboardv2.ScoreboardV2(game_date=today)
-            games = scoreboard.game_header.get_data_frame()
-            line_scores = scoreboard.line_score.get_data_frame()
-
-            team_abbr = None
-            if " vs. " in matchup or " @ " in matchup:
-                team_abbr = matchup[:3]
-
-            if team_abbr is not None and not line_scores.empty and not games.empty:
-                matching_rows = line_scores[line_scores["TEAM_ABBREVIATION"] == team_abbr]
-                if not matching_rows.empty:
-                    game_id = matching_rows.iloc[0]["GAME_ID"]
-                    game_row = games[games["GAME_ID"] == game_id]
-
-                    if not game_row.empty:
-                        game_row = game_row.iloc[0]
-                        game_status_text = game_row.get("GAME_STATUS_TEXT", "Scheduled")
-                        next_game_status = game_status_text
-
-                        home_team = line_scores[
-                            (line_scores["GAME_ID"] == game_id) &
-                            (line_scores["TEAM_CITY_NAME"].notna())
-                        ]
-
-                        game_date_est = game_row.get("GAME_DATE_EST", None)
-
-                        if game_date_est:
-                            try:
-                                dt = pd.to_datetime(game_date_est)
-                                next_date = dt.strftime("%B %d, %Y")
-                                next_time = dt.strftime("%I:%M %p ET").lstrip("0")
-                            except:
-                                pass
-
-                        teams_in_game = line_scores[line_scores["GAME_ID"] == game_id]["TEAM_ABBREVIATION"].tolist()
-                        if len(teams_in_game) >= 2:
-                            next_matchup = f"{teams_in_game[0]} vs {teams_in_game[1]}"
-
-        except:
-            pass
+        pick_text, pick_class = get_pick_label(prob_over, prob_under)
 
         # -----------------------------
-        # Game Info Card
+        # Game info card
         # -----------------------------
         st.markdown('<div class="section-card">', unsafe_allow_html=True)
         st.markdown('<div class="section-title">Game Info</div>', unsafe_allow_html=True)
@@ -364,19 +415,19 @@ if selected_player:
         <div class="stat-grid">
             <div class="stat-box">
                 <div class="stat-label">Status</div>
-                <div class="stat-value">{next_game_status}</div>
+                <div class="stat-value">{game_status}</div>
             </div>
             <div class="stat-box">
                 <div class="stat-label">Matchup</div>
-                <div class="stat-value">{next_matchup}</div>
+                <div class="stat-value">{matchup}</div>
             </div>
             <div class="stat-box">
                 <div class="stat-label">Date</div>
-                <div class="stat-value">{next_date}</div>
+                <div class="stat-value">{game_date}</div>
             </div>
             <div class="stat-box">
                 <div class="stat-label">Time</div>
-                <div class="stat-value">{next_time}</div>
+                <div class="stat-value">{game_time}</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -384,12 +435,10 @@ if selected_player:
         st.markdown('</div>', unsafe_allow_html=True)
 
         # -----------------------------
-        # Prediction Card
+        # Prediction card
         # -----------------------------
         st.markdown('<div class="section-card">', unsafe_allow_html=True)
         st.markdown('<div class="section-title">Prediction</div>', unsafe_allow_html=True)
-
-        edge_class = "green-pill" if edge > 0 else "red-pill"
 
         st.markdown(f"""
         <div class="stat-grid">
@@ -403,11 +452,11 @@ if selected_player:
             </div>
             <div class="stat-box">
                 <div class="stat-label">Edge</div>
-                <div class="stat-value">{format_edge(edge)}</div>
+                <div class="stat-value">{edge:+.2f}</div>
             </div>
             <div class="stat-box">
                 <div class="stat-label">Confidence Split</div>
-                <div class="stat-value">O {prob_over*100:.1f}% / U {prob_under*100:.1f}%</div>
+                <div class="stat-value">O {prob_over:.1%} / U {prob_under:.1%}</div>
             </div>
         </div>
 
@@ -424,26 +473,37 @@ if selected_player:
         st.markdown('</div>', unsafe_allow_html=True)
 
         # -----------------------------
-        # Optional recent form card
+        # Recent form card
         # -----------------------------
+        recent_games = df.sort_values("GAME_DATE", ascending=False).head(5).copy()
+        recent_games["GAME_DATE"] = recent_games["GAME_DATE"].dt.strftime("%Y-%m-%d")
+
         st.markdown('<div class="section-card">', unsafe_allow_html=True)
         st.markdown('<div class="section-title">Recent Form</div>', unsafe_allow_html=True)
 
         st.markdown(f"""
         <div class="stat-grid">
             <div class="stat-box">
-                <div class="stat-label">Avg Points (Last 10)</div>
-                <div class="stat-value">{avg_pts_last_10:.2f}</div>
+                <div class="stat-label">Avg Points</div>
+                <div class="stat-value">{latest["player_avg_pts"]:.2f}</div>
             </div>
             <div class="stat-box">
-                <div class="stat-label">Avg Minutes (Last 10)</div>
-                <div class="stat-value">{avg_min_last_10:.2f}</div>
+                <div class="stat-label">Last 5 Points</div>
+                <div class="stat-value">{latest["last5_pts"]:.2f}</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Last 5 Minutes</div>
+                <div class="stat-value">{latest["last5_minutes"]:.2f}</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Last 5 GmSc</div>
+                <div class="stat-value">{latest["last5_gmsc"]:.2f}</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
         st.dataframe(
-            recent_games[["GAME_DATE", "MATCHUP", "PTS", "MIN"]].head(5),
+            recent_games[["GAME_DATE", "MATCHUP", "PTS", "MIN", "FGA", "FTA"]],
             use_container_width=True,
             hide_index=True
         )
@@ -452,6 +512,7 @@ if selected_player:
 
     except Exception as e:
         st.error(f"Something went wrong: {e}")
+
 else:
     st.markdown("""
     <div class="section-card">
