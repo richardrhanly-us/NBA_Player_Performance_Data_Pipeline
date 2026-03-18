@@ -35,7 +35,7 @@ st.markdown("""
     }
 
     .block-container {
-        padding-top: 1.5rem;
+        padding-top: 1.2rem;
         padding-bottom: 3rem;
         max-width: 900px;
     }
@@ -48,14 +48,14 @@ st.markdown("""
     .hero {
         background: linear-gradient(135deg, #111827 0%, #1e293b 100%);
         border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 22px;
-        padding: 26px 24px 20px 24px;
-        margin-bottom: 20px;
+        border-radius: 20px;
+        padding: 24px 22px 18px 22px;
+        margin-bottom: 18px;
         box-shadow: 0 10px 30px rgba(0,0,0,0.28);
     }
 
     .hero-title {
-        font-size: 2.1rem;
+        font-size: 2rem;
         font-weight: 800;
         margin-bottom: 6px;
         color: #ffffff;
@@ -63,58 +63,101 @@ st.markdown("""
 
     .hero-subtitle {
         color: #cbd5e1;
-        font-size: 1rem;
+        font-size: 0.98rem;
         margin-bottom: 0;
     }
 
     .section-card {
-        background: rgba(15, 23, 42, 0.95);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 18px;
-        padding: 20px;
-        margin-top: 18px;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.22);
+        background: rgba(15, 23, 42, 0.96);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 16px;
+        padding: 16px;
+        margin-top: 16px;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.18);
     }
 
     .section-title {
-        font-size: 1.2rem;
+        font-size: 1.05rem;
         font-weight: 700;
-        margin-bottom: 14px;
+        margin-bottom: 12px;
         color: #f8fafc;
     }
 
-    .stat-grid {
+    .compact-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 12px;
-        margin-top: 8px;
+        gap: 10px;
     }
 
-    .stat-box {
+    .compact-box {
         background: #111827;
-        border: 1px solid rgba(255,255,255,0.06);
-        border-radius: 14px;
-        padding: 14px;
+        border: 1px solid rgba(255,255,255,0.05);
+        border-radius: 12px;
+        padding: 12px 14px;
     }
 
-    .stat-label {
+    .compact-label {
         color: #94a3b8;
-        font-size: 0.82rem;
-        margin-bottom: 6px;
+        font-size: 0.76rem;
+        margin-bottom: 4px;
     }
 
-    .stat-value {
+    .compact-value {
         color: #f8fafc;
-        font-size: 1.12rem;
+        font-size: 1rem;
         font-weight: 700;
+        line-height: 1.25;
+    }
+
+    .model-card {
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.98) 0%, rgba(17, 24, 39, 0.98) 100%);
+        border: 1px solid rgba(56, 189, 248, 0.28);
+        border-radius: 16px;
+        padding: 16px;
+        margin-top: 16px;
+        box-shadow: 0 8px 22px rgba(0,0,0,0.22);
+    }
+
+    .model-title {
+        color: #7dd3fc;
+        font-size: 0.82rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+    }
+
+    .model-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+
+    .model-box {
+        background: rgba(8, 17, 32, 0.95);
+        border: 1px solid rgba(56, 189, 248, 0.14);
+        border-radius: 12px;
+        padding: 12px 14px;
+    }
+
+    .model-label {
+        color: #bae6fd;
+        font-size: 0.76rem;
+        margin-bottom: 4px;
+    }
+
+    .model-value {
+        color: #f8fafc;
+        font-size: 1.02rem;
+        font-weight: 800;
     }
 
     .pick-banner {
-        margin-top: 18px;
-        border-radius: 16px;
-        padding: 16px 18px;
-        font-size: 1.05rem;
-        font-weight: 700;
+        margin-top: 14px;
+        border-radius: 14px;
+        padding: 14px 16px;
+        font-size: 1rem;
+        font-weight: 800;
         text-align: center;
     }
 
@@ -138,8 +181,8 @@ st.markdown("""
 
     .small-note {
         color: #94a3b8;
-        font-size: 0.86rem;
-        margin-top: 10px;
+        font-size: 0.84rem;
+        margin-top: 8px;
     }
 
     .stSelectbox label, .stNumberInput label, .stCheckbox label {
@@ -625,89 +668,103 @@ if selected_player:
         prob_over = 1 - norm.cdf(line, loc=predicted_points, scale=points_std)
         prob_under = 1 - prob_over
         pick_text, pick_class = get_pick_label(prob_over, prob_under)
-
+        
         st.markdown('<div class="section-card">', unsafe_allow_html=True)
         st.markdown('<div class="section-title">Game Info</div>', unsafe_allow_html=True)
+        
         st.markdown(f"""
-        <div class="stat-grid">
-            <div class="stat-box">
-                <div class="stat-label">Status</div>
-                <div class="stat-value">{game_status}</div>
+        <div class="compact-grid">
+            <div class="compact-box">
+                <div class="compact-label">Status</div>
+                <div class="compact-value">{game_status}</div>
             </div>
-            <div class="stat-box">
-                <div class="stat-label">Matchup</div>
-                <div class="stat-value">{matchup}</div>
+            <div class="compact-box">
+                <div class="compact-label">Matchup</div>
+                <div class="compact-value">{matchup}</div>
             </div>
-            <div class="stat-box">
-                <div class="stat-label">Date</div>
-                <div class="stat-value">{game_date}</div>
+            <div class="compact-box">
+                <div class="compact-label">Date</div>
+                <div class="compact-value">{game_date}</div>
             </div>
-            <div class="stat-box">
-                <div class="stat-label">Time</div>
-                <div class="stat-value">{game_time}</div>
+            <div class="compact-box">
+                <div class="compact-label">Time</div>
+                <div class="compact-value">{game_time}</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
+        
         st.markdown('</div>', unsafe_allow_html=True)
+        
+
+        
 
         st.markdown('<div class="section-card">', unsafe_allow_html=True)
         st.markdown('<div class="section-title">Sportsbook Line</div>', unsafe_allow_html=True)
+        
         update_text = book_updated if book_updated else "N/A"
+        
         st.markdown(f"""
-        <div class="stat-grid">
-            <div class="stat-box">
-                <div class="stat-label">Book</div>
-                <div class="stat-value">{book_name}</div>
+        <div class="compact-grid">
+            <div class="compact-box">
+                <div class="compact-label">Book</div>
+                <div class="compact-value">{book_name}</div>
             </div>
-            <div class="stat-box">
-                <div class="stat-label">Line Source</div>
-                <div class="stat-value">{line_source}</div>
+            <div class="compact-box">
+                <div class="compact-label">Source</div>
+                <div class="compact-value">{line_source}</div>
             </div>
-            <div class="stat-box">
-                <div class="stat-label">Points Line</div>
-                <div class="stat-value">{line:.1f}</div>
+            <div class="compact-box">
+                <div class="compact-label">Line</div>
+                <div class="compact-value">{line:.1f}</div>
             </div>
-            <div class="stat-box">
-                <div class="stat-label">Prices</div>
-                <div class="stat-value">O {american_odds_text(over_price)} / U {american_odds_text(under_price)}</div>
+            <div class="compact-box">
+                <div class="compact-label">Prices</div>
+                <div class="compact-value">O {american_odds_text(over_price)} / U {american_odds_text(under_price)}</div>
             </div>
         </div>
         <div class="small-note">Last update: {update_text}</div>
         """, unsafe_allow_html=True)
 
-        if not odds_api_key:
-            st.info("ODDS_API_KEY not found. Using manual line only.")
-        elif sportsbook_line is None:
-            st.info("No player points line found for this player/book yet. Using manual fallback.")
-        st.markdown('</div>', unsafe_allow_html=True)
+if not odds_api_key:
+    st.info("ODDS_API_KEY not found. Using manual line only.")
+elif sportsbook_line is None:
+    st.info("No player points line found for this player/book yet. Using manual fallback.")
 
-        st.markdown('<div class="section-card">', unsafe_allow_html=True)
-        st.markdown('<div class="section-title">Prediction</div>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+        st.markdown('<div class="model-card">', unsafe_allow_html=True)
+        st.markdown('<div class="model-title">Model Output</div>', unsafe_allow_html=True)
+        
         st.markdown(f"""
-        <div class="stat-grid">
-            <div class="stat-box">
-                <div class="stat-label">Predicted Points</div>
-                <div class="stat-value">{predicted_points:.2f}</div>
+        <div class="model-grid">
+            <div class="model-box">
+                <div class="model-label">Predicted Points</div>
+                <div class="model-value">{predicted_points:.2f}</div>
             </div>
-            <div class="stat-box">
-                <div class="stat-label">Line</div>
-                <div class="stat-value">{line:.1f}</div>
+            <div class="model-box">
+                <div class="model-label">Sportsbook Line</div>
+                <div class="model-value">{line:.1f}</div>
             </div>
-            <div class="stat-box">
-                <div class="stat-label">Edge</div>
-                <div class="stat-value">{edge:+.2f}</div>
+            <div class="model-box">
+                <div class="model-label">Model Edge</div>
+                <div class="model-value">{edge:+.2f}</div>
             </div>
-            <div class="stat-box">
-                <div class="stat-label">Confidence Split</div>
-                <div class="stat-value">O {prob_over:.1%} / U {prob_under:.1%}</div>
+            <div class="model-box">
+                <div class="model-label">Win Probability Split</div>
+                <div class="model-value">O {prob_over:.1%} / U {prob_under:.1%}</div>
             </div>
         </div>
-
+        
         <div class="pick-banner {pick_class}">
             {pick_text}
         </div>
         """, unsafe_allow_html=True)
-        st.markdown('<div class="small-note">This is a model lean, not guaranteed betting advice.</div>', unsafe_allow_html=True)
+        
+        st.markdown(
+            '<div class="small-note">This section reflects the trained regression model output compared against the sportsbook line.</div>',
+            unsafe_allow_html=True
+        )
+        
         st.markdown('</div>', unsafe_allow_html=True)
 
         recent_games = df.sort_values("GAME_DATE", ascending=False).head(5).copy()
