@@ -14,6 +14,8 @@ from datetime import datetime
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
+APP_VERSION = "v1.2"
+
 
 st.set_page_config(
     page_title="NBA Points Prop Predictor",
@@ -54,6 +56,13 @@ st.markdown("""
         color: #cbd5e1;
         font-size: 0.98rem;
         margin-bottom: 0;
+    }
+
+    .version-tag {
+        color: #7dd3fc;
+        font-size: 0.85rem;
+        font-weight: 700;
+        margin: 4px 0 12px 4px;
     }
 
     .section-card {
@@ -101,48 +110,48 @@ st.markdown("""
     }
 
     .model-card {
-        background: linear-gradient(135deg, rgba(14, 116, 144, 0.22) 0%, rgba(17, 24, 39, 0.98) 100%);
-        border: 1px solid rgba(56, 189, 248, 0.35);
+        background: linear-gradient(135deg, #0b2440 0%, #102a43 45%, #111827 100%);
+        border: 2px solid rgba(56, 189, 248, 0.45);
         border-radius: 18px;
-        padding: 18px;
-        margin-top: 18px;
-        box-shadow: 0 10px 24px rgba(0,0,0,0.22);
+        padding: 20px;
+        margin-top: 20px;
+        box-shadow: 0 12px 28px rgba(8, 47, 73, 0.45);
     }
 
     .model-title {
         color: #7dd3fc;
-        font-size: 0.82rem;
-        font-weight: 800;
-        letter-spacing: 0.08em;
+        font-size: 0.85rem;
+        font-weight: 900;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
-        margin-bottom: 12px;
+        margin-bottom: 14px;
     }
 
     .model-main {
         display: grid;
         grid-template-columns: 1.2fr 0.9fr 0.9fr 1fr;
-        gap: 10px;
+        gap: 12px;
     }
 
     .model-stat {
-        background: rgba(8, 17, 32, 0.95);
-        border: 1px solid rgba(56, 189, 248, 0.14);
-        border-radius: 12px;
-        padding: 12px 14px;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(125, 211, 252, 0.18);
+        border-radius: 14px;
+        padding: 14px 16px;
     }
 
     .model-stat-label {
-        color: #bae6fd;
+        color: #c8f1ff;
         font-size: 0.74rem;
-        margin-bottom: 4px;
+        margin-bottom: 5px;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.05em;
     }
 
     .model-stat-value {
-        color: #f8fafc;
-        font-size: 1.08rem;
-        font-weight: 800;
+        color: #ffffff;
+        font-size: 1.12rem;
+        font-weight: 900;
     }
 
     .pick-banner {
@@ -504,6 +513,8 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+st.markdown(f'<div class="version-tag">App version {APP_VERSION}</div>', unsafe_allow_html=True)
+
 st.caption("Search for a player by name")
 
 selected_player = st.selectbox(
@@ -755,12 +766,11 @@ if selected_player:
         <div class="pick-banner {pick_class}">
             {pick_text}
         </div>
-        """, unsafe_allow_html=True)
 
-        st.markdown(
-            '<div class="small-note">This section reflects the trained regression model compared against the sportsbook line.</div>',
-            unsafe_allow_html=True
-        )
+        <div class="small-note">
+            Trained regression model output compared against the current sportsbook line.
+        </div>
+        """, unsafe_allow_html=True)
 
         st.markdown('</div>', unsafe_allow_html=True)
 
