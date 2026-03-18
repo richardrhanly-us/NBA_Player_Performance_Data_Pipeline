@@ -248,7 +248,7 @@ def normalize_name(name: str) -> str:
         return ""
 
     name = unicodedata.normalize("NFKD", str(name))
-    name = "".join(char for char in name if not unicodedata.combining(char))
+    name = "".join(ch for ch in name if not unicodedata.combining(ch))
 
     return (
         name.lower()
