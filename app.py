@@ -46,7 +46,15 @@ if selected_player:
     team_abbr = player_info.loc[0, "TEAM_ABBREVIATION"]
 
     # Today's NBA schedule
-    today_str = datetime.today().strftime("%m/%d/%Y")
+
+    now_et = datetime.now(eastern)
+
+    # If it's before 4 AM ET, still consider it "yesterday's slate"
+    if now_et.hour < 4:
+        now_et = now_et - pd.Timedelta(days=1)
+    
+    today_str = now_et.strftime("%m/%d/%Y")
+    
     board = scoreboardv2.ScoreboardV2(game_date=today_str)
     game_header = board.game_header.get_data_frame()
     line_score = board.line_score.get_data_frame()
