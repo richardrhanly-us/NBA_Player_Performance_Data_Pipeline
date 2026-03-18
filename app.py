@@ -141,7 +141,7 @@ st.markdown("""
         margin-top: 10px;
     }
 
-    .stSelectbox label, .stNumberInput label, .stCheckbox label {
+    .stSelectbox label, .stNumberInput label, .stCheckbox label, .stTextInput label {
         color: #e5e7eb !important;
         font-weight: 600;
     }
@@ -151,6 +151,12 @@ st.markdown("""
         border: 1px solid rgba(255,255,255,0.10) !important;
         border-radius: 14px !important;
         color: white !important;
+    }
+
+    .stTextInput > div > div > input {
+        background-color: #111827 !important;
+        color: white !important;
+        border-radius: 14px !important;
     }
 
     .stNumberInput > div > div > input {
@@ -176,6 +182,9 @@ st.markdown("""
 # -----------------------------
 # Helpers / cache
 # -----------------------------
+CURRENT_SEASON = "2025-26"
+
+
 @st.cache_resource
 def load_model():
     return joblib.load("models/points_regression.pkl")
@@ -188,10 +197,20 @@ def load_model_stats():
 
 
 @st.cache_data
-def load_players():
-    all_players = players.get_players()
-    name_map = {p["full_name"]: p["id"] for p in all_players}
-    return all_players, name_map, sorted(name_map.keys())
+def load_active_players():
+    active_players = players.get_active_players()
+    name_map = {p["full_name"]: p["id"] for p in active_players}
+    return active_players, name_map, sorted(name_map.keys())
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def player_has_current_season_gamelog(player_id: int, season: str = CURRENT_SEASON) -> bool:
+    try:
+        gamelog = playergamelog.PlayerGameLog(player_id=player_id, season=season)
+        df = gamelog.get_data_frames()[0]
+        return not df.empty
+    except Exception:
+        return False
 
 
 def get_pick_label(prob_over, prob_under):
@@ -230,6 +249,31 @@ def american_odds_text(price):
         return f"+{price}" if price > 0 else str(price)
     except Exception:
         return str(price)
+
+
+def get_search_matches(search_text, player_names, player_name_map, max_results=20):
+    if not search_text or not search_text.strip():
+        return []
+
+    query = normalize_name(search_text)
+
+    raw_matches = []
+    for name in player_names:
+        normalized_player_name = normalize_name(name)
+        if query in normalized_player_name:
+            raw_matches.append(name)
+
+    raw_matches = raw_matches[:max_results * 2]
+
+    eligible_matches = []
+    for name in raw_matches:
+        player_id = player_name_map[name]
+        if player_has_current_season_gamelog(player_id):
+            eligible_matches.append(name)
+        if len(eligible_matches) >= max_results:
+            break
+
+    return eligible_matches
 
 
 def get_team_game_info(team_id, team_abbr, target_date_str):
@@ -411,7 +455,7 @@ model = load_model()
 model_stats = load_model_stats()
 points_std = model_stats["std_dev"]
 
-_, player_name_map, player_names = load_players()
+_, player_name_map, player_names = load_active_players()
 
 
 # -----------------------------
@@ -430,12 +474,24 @@ st.markdown("""
 # -----------------------------
 st.caption("Search for a player by name")
 
-selected_player = st.selectbox(
-    "Player",
-    options=player_names,
-    index=None,
+player_search = st.text_input(
+    "Player search",
+    value="",
     placeholder="Start typing a player name..."
 )
+
+selected_player = None
+matching_players = get_search_matches(player_search, player_names, player_name_map)
+
+if player_search.strip():
+    if matching_players:
+        selected_player = st.selectbox(
+            "Matching players",
+            options=matching_players,
+            index=0
+        )
+    else:
+        st.info("No active players with current-season game logs matched your search.")
 
 selected_book = st.selectbox(
     "Sportsbook",
@@ -455,9 +511,6 @@ if selected_player:
     try:
         player_id = player_name_map[selected_player]
 
-        # -----------------------------
-        # Current player/team info
-        # -----------------------------
         player_info = commonplayerinfo.CommonPlayerInfo(player_id=player_id).get_data_frames()[0]
         team_id = int(player_info.loc[0, "TEAM_ID"])
         team_abbr = player_info.loc[0, "TEAM_ABBREVIATION"]
@@ -502,9 +555,6 @@ if selected_player:
                 game_date = "N/A"
                 game_time = "N/A"
 
-        # -----------------------------
-        # Pull sportsbook line
-        # -----------------------------
         sportsbook_line = None
         over_price = None
         under_price = None
@@ -552,12 +602,9 @@ if selected_player:
         elif sportsbook_line is None:
             line_source = "Manual fallback"
 
-        # -----------------------------
-        # Game log / model features
-        # -----------------------------
         gamelog = playergamelog.PlayerGameLog(
             player_id=player_id,
-            season="2025-26"
+            season=CURRENT_SEASON
         )
 
         df = gamelog.get_data_frames()[0]
@@ -622,9 +669,6 @@ if selected_player:
 
         pick_text, pick_class = get_pick_label(prob_over, prob_under)
 
-        # -----------------------------
-        # Game info card
-        # -----------------------------
         st.markdown('<div class="section-card">', unsafe_allow_html=True)
         st.markdown('<div class="section-title">Game Info</div>', unsafe_allow_html=True)
 
@@ -651,9 +695,6 @@ if selected_player:
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # -----------------------------
-        # Line card
-        # -----------------------------
         st.markdown('<div class="section-card">', unsafe_allow_html=True)
         st.markdown('<div class="section-title">Sportsbook Line</div>', unsafe_allow_html=True)
 
@@ -688,9 +729,6 @@ if selected_player:
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # -----------------------------
-        # Prediction card
-        # -----------------------------
         st.markdown('<div class="section-card">', unsafe_allow_html=True)
         st.markdown('<div class="section-title">Prediction</div>', unsafe_allow_html=True)
 
@@ -726,9 +764,6 @@ if selected_player:
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # -----------------------------
-        # Recent form card
-        # -----------------------------
         recent_games = df.sort_values("GAME_DATE", ascending=False).head(5).copy()
         recent_games["GAME_DATE"] = recent_games["GAME_DATE"].dt.strftime("%Y-%m-%d")
 
@@ -772,7 +807,7 @@ else:
     <div class="section-card">
         <div class="section-title">Get Started</div>
         <div class="small-note">
-            Select a player above to load game info, sportsbook line, and generate a prediction.
+            Start typing a player name to search active NBA players with current-season game logs.
         </div>
     </div>
     """, unsafe_allow_html=True)
