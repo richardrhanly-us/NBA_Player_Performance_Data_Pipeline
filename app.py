@@ -39,15 +39,6 @@ selected_player = st.selectbox(
 
 line = st.number_input("Enter points line", min_value=0.0, value=20.5, step=0.5)
 
-if selected_player:
-    player_id = player_name_map[selected_player]
-
-    # Current team info
-    player_info = commonplayerinfo.CommonPlayerInfo(player_id=player_id).get_data_frames()[0]
-    team_id = int(player_info.loc[0, "TEAM_ID"])
-    team_abbr = player_info.loc[0, "TEAM_ABBREVIATION"]
-
-
 def get_team_game_info(team_id, team_abbr, target_date_str):
     board = scoreboardv2.ScoreboardV2(game_date=target_date_str)
     game_header = board.game_header.get_data_frame()
@@ -85,6 +76,15 @@ def get_team_game_info(team_id, team_abbr, target_date_str):
         "date": game_date,
         "time": game_time
     }
+
+if selected_player:
+    player_id = player_name_map[selected_player]
+
+    # Current team info
+    player_info = commonplayerinfo.CommonPlayerInfo(player_id=player_id).get_data_frames()[0]
+    team_id = int(player_info.loc[0, "TEAM_ID"])
+    team_abbr = player_info.loc[0, "TEAM_ABBREVIATION"]
+
     
     # Today's NBA schedule
 eastern = pytz.timezone("US/Eastern")
