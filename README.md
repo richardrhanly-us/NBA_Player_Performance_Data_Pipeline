@@ -60,7 +60,7 @@ The project includes a fully functional web app built with Streamlit.
 
 You can use the NBA Points Prop Predictor here:
 
-👉 https://nbaplayerperformanceprediction-7ajdpm4cmafadrrmuczbyvf.streamlit.app
+👉 https://nbaplayerperformanceprediction-7ajdpm4cmafadrmuczbvyf.streamlit.app/
 
 This interactive app allows users to:
 - Search for any NBA player
