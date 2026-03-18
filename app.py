@@ -1,3 +1,5 @@
+import os
+import requests
 import streamlit as st
 import pandas as pd
 import joblib
@@ -137,7 +139,13 @@ st.markdown("""
         margin-top: 10px;
     }
 
-    .stSelectbox label, .stNumberInput label {
+    .api-note {
+        color: #cbd5e1;
+        font-size: 0.82rem;
+        margin-top: 6px;
+    }
+
+    .stSelectbox label, .stNumberInput label, .stCheckbox label {
         color: #e5e7eb !important;
         font-weight: 600;
     }
@@ -170,7 +178,7 @@ st.markdown("""
 
 
 # -----------------------------
-# Helpers
+# Helpers / cache
 # -----------------------------
 @st.cache_resource
 def load_model():
@@ -196,6 +204,31 @@ def get_pick_label(prob_over, prob_under):
     if prob_under >= 0.60:
         return "Lean Under", "pick-under"
     return "No Edge", "pick-none"
+
+
+def normalize_name(name: str) -> str:
+    return (
+        str(name)
+        .lower()
+        .replace(".", "")
+        .replace("’", "'")
+        .replace("-", " ")
+        .replace(" jr", "")
+        .replace(" sr", "")
+        .replace(" iii", "")
+        .replace(" ii", "")
+        .strip()
+    )
+
+
+def american_odds_text(price):
+    if price is None:
+        return "N/A"
+    try:
+        price = int(price)
+        return f"+{price}" if price > 0 else str(price)
+    except Exception:
+        return str(price)
 
 
 def get_team_game_info(team_id, team_abbr, target_date_str):
@@ -237,6 +270,143 @@ def get_team_game_info(team_id, team_abbr, target_date_str):
     }
 
 
+BOOKMAKER_MAP = {
+    "DraftKings": "draftkings",
+    "FanDuel": "fanduel",
+    "BetMGM": "betmgm",
+    "Caesars": "caesars",
+    "ESPN BET": "espnbet",
+    "Bovada": "bovada"
+}
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_upcoming_nba_events(api_key):
+    url = "https://api.the-odds-api.com/v4/sports/basketball_nba/events"
+    resp = requests.get(
+        url,
+        params={"apiKey": api_key},
+        timeout=20
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def find_matching_event_id(events, team_abbr, matchup_text):
+    # matchup_text examples: DAL vs ATL, DAL @ ATL
+    parts = matchup_text.replace("vs", "@").split("@")
+    teams = [p.strip() for p in parts if p.strip()]
+    if len(teams) != 2:
+        return None
+
+    target_team_1 = teams[0]
+    target_team_2 = teams[1]
+
+    nba_teams = {
+        "ATL": "Atlanta Hawks",
+        "BOS": "Boston Celtics",
+        "BKN": "Brooklyn Nets",
+        "CHA": "Charlotte Hornets",
+        "CHI": "Chicago Bulls",
+        "CLE": "Cleveland Cavaliers",
+        "DAL": "Dallas Mavericks",
+        "DEN": "Denver Nuggets",
+        "DET": "Detroit Pistons",
+        "GSW": "Golden State Warriors",
+        "HOU": "Houston Rockets",
+        "IND": "Indiana Pacers",
+        "LAC": "Los Angeles Clippers",
+        "LAL": "Los Angeles Lakers",
+        "MEM": "Memphis Grizzlies",
+        "MIA": "Miami Heat",
+        "MIL": "Milwaukee Bucks",
+        "MIN": "Minnesota Timberwolves",
+        "NOP": "New Orleans Pelicans",
+        "NYK": "New York Knicks",
+        "OKC": "Oklahoma City Thunder",
+        "ORL": "Orlando Magic",
+        "PHI": "Philadelphia 76ers",
+        "PHX": "Phoenix Suns",
+        "POR": "Portland Trail Blazers",
+        "SAC": "Sacramento Kings",
+        "SAS": "San Antonio Spurs",
+        "TOR": "Toronto Raptors",
+        "UTA": "Utah Jazz",
+        "WAS": "Washington Wizards"
+    }
+
+    full_1 = nba_teams.get(target_team_1)
+    full_2 = nba_teams.get(target_team_2)
+
+    for event in events:
+        home_team = event.get("home_team")
+        away_team = event.get("away_team")
+        if {home_team, away_team} == {full_1, full_2}:
+            return event.get("id")
+
+    return None
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_player_points_market(api_key, event_id, bookmaker_key):
+    url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/events/{event_id}/odds"
+    resp = requests.get(
+        url,
+        params={
+            "apiKey": api_key,
+            "regions": "us",
+            "markets": "player_points",
+            "bookmakers": bookmaker_key,
+            "oddsFormat": "american"
+        },
+        timeout=20
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def extract_player_prop(event_odds_json, selected_player):
+    target_name = normalize_name(selected_player)
+
+    bookmakers = event_odds_json.get("bookmakers", [])
+    for bookmaker in bookmakers:
+        book_title = bookmaker.get("title", "Unknown")
+        book_last_update = bookmaker.get("last_update", "")
+
+        for market in bookmaker.get("markets", []):
+            if market.get("key") != "player_points":
+                continue
+
+            outcomes = market.get("outcomes", [])
+
+            over_outcomes = []
+            under_outcomes = []
+
+            for outcome in outcomes:
+                outcome_name = normalize_name(outcome.get("description", ""))
+                if outcome_name != target_name:
+                    continue
+
+                if outcome.get("name") == "Over":
+                    over_outcomes.append(outcome)
+                elif outcome.get("name") == "Under":
+                    under_outcomes.append(outcome)
+
+            for over in over_outcomes:
+                over_point = over.get("point")
+                for under in under_outcomes:
+                    if under.get("point") == over_point:
+                        return {
+                            "line": float(over_point),
+                            "over_price": over.get("price"),
+                            "under_price": under.get("price"),
+                            "bookmaker": book_title,
+                            "last_update": book_last_update
+                        }
+
+    return None
+
+
 # -----------------------------
 # Load resources
 # -----------------------------
@@ -253,13 +423,13 @@ _, player_name_map, player_names = load_players()
 st.markdown("""
 <div class="hero">
     <div class="hero-title">NBA Points Prop Predictor</div>
-    <p class="hero-subtitle">Search a player, set the line, and get a quick model-based lean.</p>
+    <p class="hero-subtitle">Search a player, auto-load the sportsbook line, and compare it to the model.</p>
 </div>
 """, unsafe_allow_html=True)
 
 
 # -----------------------------
-# Inputs
+# Controls
 # -----------------------------
 st.caption("Search for a player by name")
 
@@ -270,12 +440,15 @@ selected_player = st.selectbox(
     placeholder="Start typing a player name..."
 )
 
-line = st.number_input(
-    "Enter points line",
-    min_value=0.0,
-    value=20.5,
-    step=0.5
+selected_book = st.selectbox(
+    "Sportsbook",
+    options=list(BOOKMAKER_MAP.keys()),
+    index=0
 )
+
+manual_override = st.checkbox("Manually override sportsbook line", value=False)
+
+odds_api_key = os.getenv("ODDS_API_KEY")
 
 
 # -----------------------------
@@ -318,7 +491,6 @@ if selected_player:
                 future_date = now_et + pd.Timedelta(days=i)
                 future_date_str = future_date.strftime("%m/%d/%Y")
                 next_game_info = get_team_game_info(team_id, team_abbr, future_date_str)
-
                 if next_game_info:
                     break
 
@@ -332,6 +504,54 @@ if selected_player:
                 matchup = "N/A"
                 game_date = "N/A"
                 game_time = "N/A"
+
+        # -----------------------------
+        # Pull sportsbook line
+        # -----------------------------
+        sportsbook_line = None
+        over_price = None
+        under_price = None
+        book_name = selected_book
+        book_updated = None
+        line_source = "Manual"
+
+        if odds_api_key and matchup != "N/A":
+            try:
+                events = fetch_upcoming_nba_events(odds_api_key)
+                event_id = find_matching_event_id(events, team_abbr, matchup)
+
+                if event_id:
+                    event_odds = fetch_player_points_market(
+                        odds_api_key,
+                        event_id,
+                        BOOKMAKER_MAP[selected_book]
+                    )
+                    prop = extract_player_prop(event_odds, selected_player)
+
+                    if prop:
+                        sportsbook_line = prop["line"]
+                        over_price = prop["over_price"]
+                        under_price = prop["under_price"]
+                        book_name = prop["bookmaker"]
+                        book_updated = prop["last_update"]
+                        line_source = "Sportsbook API"
+            except Exception:
+                sportsbook_line = None
+
+        default_line = sportsbook_line if sportsbook_line is not None else 20.5
+
+        line = st.number_input(
+            "Points line",
+            min_value=0.0,
+            value=float(default_line),
+            step=0.5,
+            disabled=(sportsbook_line is not None and not manual_override)
+        )
+
+        if sportsbook_line is not None and not manual_override:
+            line = sportsbook_line
+        elif sportsbook_line is None:
+            line_source = "Manual fallback"
 
         # -----------------------------
         # Game log / model features
@@ -357,7 +577,6 @@ if selected_player:
         for col in numeric_cols:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-        # Game Score
         df["gmsc"] = (
             df["PTS"]
             + 0.4 * df["FGM"]
@@ -372,7 +591,6 @@ if selected_player:
             - df["TOV"]
         )
 
-        # Exact feature names from your trained model
         df["player_avg_pts"] = df["PTS"].shift(1).expanding().mean()
         df["last5_pts"] = df["PTS"].shift(1).rolling(5).mean()
         df["last5_fga"] = df["FGA"].shift(1).rolling(5).mean()
@@ -431,6 +649,43 @@ if selected_player:
             </div>
         </div>
         """, unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # -----------------------------
+        # Line card
+        # -----------------------------
+        st.markdown('<div class="section-card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Sportsbook Line</div>', unsafe_allow_html=True)
+
+        update_text = book_updated if book_updated else "N/A"
+
+        st.markdown(f"""
+        <div class="stat-grid">
+            <div class="stat-box">
+                <div class="stat-label">Book</div>
+                <div class="stat-value">{book_name}</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Line Source</div>
+                <div class="stat-value">{line_source}</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Points Line</div>
+                <div class="stat-value">{line:.1f}</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Prices</div>
+                <div class="stat-value">O {american_odds_text(over_price)} / U {american_odds_text(under_price)}</div>
+            </div>
+        </div>
+        <div class="small-note">Last update: {update_text}</div>
+        """, unsafe_allow_html=True)
+
+        if not odds_api_key:
+            st.info("ODDS_API_KEY not found. Using manual line only.")
+        elif sportsbook_line is None:
+            st.info("No player points line found for this player/book yet. Using manual fallback.")
 
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -518,7 +773,7 @@ else:
     <div class="section-card">
         <div class="section-title">Get Started</div>
         <div class="small-note">
-            Select a player above to load game info and generate a prediction.
+            Select a player above to load game info, sportsbook line, and generate a prediction.
         </div>
     </div>
     """, unsafe_allow_html=True)
