@@ -14,9 +14,15 @@ from datetime import datetime
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
-APP_VERSION = "v1.2"
+APP_VERSION = "v1.3"
 
+hr {
+    display: none !important;
+}
 
+div[data-testid="stDivider"] {
+    display: none !important;
+} 
 st.set_page_config(
     page_title="NBA Points Prop Predictor",
     page_icon="🏀",
@@ -110,75 +116,71 @@ st.markdown("""
     }
 
     .model-card {
-        background: linear-gradient(135deg, #0b2440 0%, #102a43 45%, #111827 100%);
-        border: 2px solid rgba(56, 189, 248, 0.45);
+        background: linear-gradient(135deg, #020617 0%, #020617 60%, #0f172a 100%);
+        border: 2px solid #38bdf8;
         border-radius: 18px;
-        padding: 20px;
-        margin-top: 20px;
-        box-shadow: 0 12px 28px rgba(8, 47, 73, 0.45);
+        padding: 22px;
+        margin-top: 26px;
+    
+        /* glow effect */
+        box-shadow:
+            0 0 0px rgba(56,189,248,0.4),
+            0 0 20px rgba(56,189,248,0.25),
+            0 0 40px rgba(56,189,248,0.15);
     }
-
+    
     .model-title {
-        color: #7dd3fc;
-        font-size: 0.85rem;
+        color: #38bdf8;
+        font-size: 0.9rem;
         font-weight: 900;
-        letter-spacing: 0.1em;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
-        margin-bottom: 14px;
+        margin-bottom: 16px;
     }
-
+    
     .model-main {
         display: grid;
         grid-template-columns: 1.2fr 0.9fr 0.9fr 1fr;
-        gap: 12px;
+        gap: 14px;
     }
-
+    
     .model-stat {
-        background: rgba(255,255,255,0.06);
-        border: 1px solid rgba(125, 211, 252, 0.18);
+        background: #020617;
+        border: 1px solid rgba(56,189,248,0.25);
         border-radius: 14px;
         padding: 14px 16px;
     }
-
+    
     .model-stat-label {
-        color: #c8f1ff;
-        font-size: 0.74rem;
-        margin-bottom: 5px;
+        color: #7dd3fc;
+        font-size: 0.75rem;
+        margin-bottom: 6px;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.06em;
     }
-
+    
     .model-stat-value {
         color: #ffffff;
-        font-size: 1.12rem;
+        font-size: 1.15rem;
         font-weight: 900;
     }
 
-    .pick-banner {
-        margin-top: 14px;
-        border-radius: 14px;
-        padding: 14px 16px;
-        font-size: 1rem;
-        font-weight: 800;
-        text-align: center;
-    }
-
     .pick-over {
-        background: rgba(16, 185, 129, 0.15);
-        color: #34d399;
-        border: 1px solid rgba(52, 211, 153, 0.25);
+    background: rgba(16, 185, 129, 0.18);
+    color: #34d399;
+    border: 1px solid #34d399;
     }
-
+    
     .pick-under {
-        background: rgba(245, 158, 11, 0.15);
+        background: rgba(245, 158, 11, 0.18);
         color: #fbbf24;
-        border: 1px solid rgba(251, 191, 36, 0.22);
+        border: 1px solid #fbbf24;
     }
-
+    
     .pick-none {
-        background: rgba(59, 130, 246, 0.14);
+        background: rgba(59, 130, 246, 0.18);
         color: #60a5fa;
-        border: 1px solid rgba(96, 165, 250, 0.22);
+        border: 1px solid #60a5fa;
     }
 
     .small-note {
