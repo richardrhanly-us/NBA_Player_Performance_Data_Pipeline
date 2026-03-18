@@ -14,7 +14,7 @@ from datetime import datetime
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
-APP_VERSION = "v1.11"
+APP_VERSION = "v1.12"
 
 
 st.set_page_config(
@@ -352,11 +352,11 @@ def get_team_theme(team_abbr: str):
 
 
 def get_pick_label(prob_over, prob_under):
-    if prob_over >= 0.60:
+    if abs(prob_over - prob_under) <= 0.02:
+        return "No Edge", "neutral"
+    if prob_over > prob_under:
         return "Lean Over", "over"
-    if prob_under >= 0.60:
-        return "Lean Under", "under"
-    return "No Edge", "neutral"
+    return "Lean Under", "under"
 
 
 def american_odds_text(price):
@@ -812,6 +812,17 @@ if selected_player:
         <div class="model-stat-value">{predicted_points:.2f}</div>
         </div>
         
+        <div class="prob-interpretation" style="
+            margin-top: 8px;
+            margin-bottom: 10px;
+            padding: 8px 2px 0 2px;
+            font-size: 0.98rem;
+            color: #cbd5e1;
+            opacity: 0.95;
+        ">
+            {"The model sees no meaningful edge either way, with the probability split essentially even." if abs(prob_over - prob_under) <= 0.02 else f"The model projects a {prob_over:.0%} chance of the over hitting compared to {prob_under:.0%} for the under."}
+        </div>
+        
         <div class="model-stat">
         <div class="model-stat-label">Sportsbook Line</div>
         <div class="model-stat-value">{line:.1f}</div>
@@ -836,16 +847,7 @@ if selected_player:
         {pick_text}
         </div>
 
-        <div class="prob-interpretation" style="
-        margin-top: 12px;
-        padding: 10px 14px;
-        font-size: 1.2rem;
-        color: #cbd5e1;
-        opacity: 0.9;
-        ">
-        The model favors the <b>{'over' if prob_over > prob_under else 'under'}</b>, 
-        projecting <b>{max(prob_over, prob_under):.0%}</b> vs <b>{min(prob_over, prob_under):.0%}</b>.
-        </div>
+
         
         <div class="small-note">
         Trained regression model output compared against the current sportsbook line.
