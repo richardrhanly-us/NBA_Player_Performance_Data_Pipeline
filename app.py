@@ -14,7 +14,7 @@ from datetime import datetime
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
-APP_VERSION = "v1.8"
+APP_VERSION = "v1.9"
 
 
 st.set_page_config(
@@ -843,7 +843,7 @@ if selected_player:
         color: #cbd5e1;
         opacity: 0.9;
         ">
-        The model strongly leans <b>{pick_text.lower()}</b>, projecting a {max(prob_over, prob_under):.0%} likelihood versus {min(prob_over, prob_under):.0%} for the other side.
+        According to the model, the <b>{'over' if prob_over > prob_under else 'under'}</b> is favored with a {max(prob_over, prob_under):.0%} probability, compared to {min(prob_over, prob_under):.0%} on the opposite side.
         </div>
         
         <div class="small-note">
