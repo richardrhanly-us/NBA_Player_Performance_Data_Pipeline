@@ -9,7 +9,6 @@ import unicodedata
 
 from scipy.stats import norm
 from datetime import datetime
-from streamlit_searchbox import st_searchbox
 
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
@@ -142,9 +141,25 @@ st.markdown("""
         margin-top: 10px;
     }
 
-    .stSelectbox label, .stNumberInput label, .stCheckbox label {
+    .selected-player {
+        margin-top: 10px;
+        padding: 10px 14px;
+        border-radius: 12px;
+        background: rgba(59, 130, 246, 0.14);
+        border: 1px solid rgba(96, 165, 250, 0.22);
+        color: #dbeafe;
+        font-weight: 600;
+    }
+
+    .stSelectbox label, .stNumberInput label, .stCheckbox label, .stTextInput label {
         color: #e5e7eb !important;
         font-weight: 600;
+    }
+
+    .stTextInput > div > div > input {
+        background-color: #111827 !important;
+        color: white !important;
+        border-radius: 14px !important;
     }
 
     .stNumberInput > div > div > input {
@@ -163,10 +178,29 @@ st.markdown("""
         border-radius: 12px;
         overflow: hidden;
     }
+
+    div.stButton > button {
+        width: 100%;
+        text-align: left;
+        background: #111827;
+        color: #f8fafc;
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 12px;
+        padding: 0.6rem 0.9rem;
+        margin-bottom: 0.35rem;
+    }
+
+    div.stButton > button:hover {
+        border: 1px solid rgba(96, 165, 250, 0.35);
+        color: #ffffff;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 
+# -----------------------------
+# Constants
+# -----------------------------
 CURRENT_SEASON = "2025-26"
 
 BOOKMAKER_MAP = {
@@ -212,6 +246,9 @@ NBA_TEAMS = {
 }
 
 
+# -----------------------------
+# Helpers / cache
+# -----------------------------
 @st.cache_resource
 def load_model():
     return joblib.load("models/points_regression.pkl")
@@ -260,22 +297,42 @@ def player_has_current_season_gamelog(player_id: int, season: str = CURRENT_SEAS
         return False
 
 
-def search_players(search_term: str):
-    if not search_term or not search_term.strip():
+def rank_player_match(player_name: str, query: str):
+    norm_name = normalize_name(player_name)
+    tokens = norm_name.split()
+
+    if norm_name == query:
+        return (0, len(norm_name), norm_name)
+
+    if norm_name.startswith(query):
+        return (1, len(norm_name), norm_name)
+
+    for token in tokens:
+        if token.startswith(query):
+            return (2, len(norm_name), norm_name)
+
+    if query in norm_name:
+        return (3, norm_name.find(query), len(norm_name), norm_name)
+
+    return (99, 999, 999, norm_name)
+
+
+def get_player_suggestions(search_text, player_names, player_name_map, max_results=8):
+    if not search_text or len(search_text.strip()) < 2:
         return []
 
-    query = normalize_name(search_term)
-    matches = []
+    query = normalize_name(search_text)
 
+    candidates = []
     for name in player_names:
-        if query in normalize_name(name):
+        score = rank_player_match(name, query)
+        if score[0] < 99:
             player_id = player_name_map[name]
             if player_has_current_season_gamelog(player_id):
-                matches.append(name)
-        if len(matches) >= 15:
-            break
+                candidates.append((score, name))
 
-    return matches
+    candidates.sort(key=lambda x: x[0])
+    return [name for _, name in candidates[:max_results]]
 
 
 def get_pick_label(prob_over, prob_under):
@@ -417,11 +474,21 @@ def extract_player_prop(event_odds_json, selected_player):
     return None
 
 
+# -----------------------------
+# Load resources
+# -----------------------------
 model = load_model()
 model_stats = load_model_stats()
 points_std = model_stats["std_dev"]
 _, player_name_map, player_names = load_active_players()
 
+if "selected_player" not in st.session_state:
+    st.session_state.selected_player = None
+
+
+# -----------------------------
+# Header
+# -----------------------------
 st.markdown("""
 <div class="hero">
     <div class="hero-title">NBA Points Prop Predictor</div>
@@ -429,15 +496,48 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# -----------------------------
+# Search controls
+# -----------------------------
 st.caption("Search for a player by name")
 
-selected_player = st_searchbox(
-    search_function=search_players,
+player_search = st.text_input(
+    "Player",
+    value="",
     placeholder="Start typing a player name...",
-    label="Player",
-    clear_on_submit=False,
-    key="player_searchbox"
+    key="player_search"
 )
+
+suggestions = get_player_suggestions(player_search, player_names, player_name_map)
+
+# Clear selected player if search box no longer matches it closely
+if player_search.strip():
+    if (
+        st.session_state.selected_player
+        and normalize_name(player_search) != normalize_name(st.session_state.selected_player)
+        and normalize_name(player_search) not in normalize_name(st.session_state.selected_player)
+    ):
+        st.session_state.selected_player = None
+
+if len(player_search.strip()) >= 2 and st.session_state.selected_player is None:
+    if suggestions:
+        for idx, suggestion in enumerate(suggestions):
+            if st.button(suggestion, key=f"suggestion_{idx}"):
+                st.session_state.selected_player = suggestion
+                st.rerun()
+    else:
+        st.markdown(
+            '<div class="small-note">No active players matched that search.</div>',
+            unsafe_allow_html=True
+        )
+
+selected_player = st.session_state.selected_player
+
+if selected_player:
+    st.markdown(
+        f'<div class="selected-player">Selected player: {selected_player}</div>',
+        unsafe_allow_html=True
+    )
 
 selected_book = st.selectbox(
     "Sportsbook",
@@ -448,6 +548,10 @@ selected_book = st.selectbox(
 manual_override = st.checkbox("Manually override sportsbook line", value=False)
 odds_api_key = os.getenv("ODDS_API_KEY")
 
+
+# -----------------------------
+# Main app
+# -----------------------------
 if selected_player:
     try:
         player_id = player_name_map[selected_player]
@@ -723,7 +827,7 @@ else:
     <div class="section-card">
         <div class="section-title">Get Started</div>
         <div class="small-note">
-            Start typing a player name to search active NBA players with current-season game logs.
+            Start typing at least 2 letters to search active NBA players with current-season game logs.
         </div>
     </div>
     """, unsafe_allow_html=True)
