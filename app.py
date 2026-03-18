@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import time
 import requests
@@ -152,6 +153,13 @@ st.markdown("""
         font-weight: 600;
     }
 
+    .suggestions-line {
+        margin-top: 8px;
+        color: #94a3b8;
+        font-size: 0.92rem;
+        line-height: 1.5;
+    }
+
     .stSelectbox label, .stNumberInput label, .stCheckbox label, .stTextInput label {
         color: #e5e7eb !important;
         font-weight: 600;
@@ -177,38 +185,6 @@ st.markdown("""
 
     .stDataFrame {
         border-radius: 12px;
-        overflow: hidden;
-    }
-
-    div.stButton > button {
-        width: 100%;
-        text-align: left;
-        background: transparent;
-        color: #e5e7eb;
-        border: none;
-        border-bottom: 1px solid rgba(255,255,255,0.06);
-        border-radius: 0;
-        padding: 0.6rem 0.4rem;
-        box-shadow: none;
-    }
-
-    div.stButton > button:hover {
-        background: rgba(255,255,255,0.04);
-        color: #ffffff;
-        border: none;
-        border-bottom: 1px solid rgba(255,255,255,0.08);
-    }
-
-    div.stButton > button:focus {
-        box-shadow: none !important;
-        outline: none !important;
-    }
-
-    .suggestion-wrap {
-        margin-top: 6px;
-        background: rgba(17, 24, 39, 0.95);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 14px;
         overflow: hidden;
     }
 </style>
@@ -300,18 +276,13 @@ def normalize_name(name: str) -> str:
 
     name = unicodedata.normalize("NFKD", str(name))
     name = "".join(char for char in name if not unicodedata.combining(char))
-
-    return (
-        name.lower()
-        .replace(".", "")
-        .replace("’", "'")
-        .replace("-", " ")
-        .replace(" jr", "")
-        .replace(" sr", "")
-        .replace(" iii", "")
-        .replace(" ii", "")
-        .strip()
-    )
+    name = name.lower()
+    name = name.replace(".", "")
+    name = name.replace("’", "'")
+    name = name.replace("-", " ")
+    name = re.sub(r"\b(jr|sr|ii|iii|iv)\b", "", name)
+    name = re.sub(r"\s+", " ", name).strip()
+    return name
 
 
 def rank_player_match(player_name: str, query: str):
@@ -319,19 +290,19 @@ def rank_player_match(player_name: str, query: str):
     tokens = norm_name.split()
 
     if norm_name == query:
-        return (0, len(norm_name), norm_name)
+        return (0, 0, len(norm_name))
 
     if norm_name.startswith(query):
-        return (1, len(norm_name), norm_name)
+        return (1, 0, len(norm_name))
 
-    for token in tokens:
+    for i, token in enumerate(tokens):
         if token.startswith(query):
-            return (2, len(norm_name), norm_name)
+            return (2, i, len(norm_name))
 
     if query in norm_name:
-        return (3, norm_name.find(query), len(norm_name), norm_name)
+        return (3, norm_name.find(query), len(norm_name))
 
-    return (99, 999, 999, norm_name)
+    return (99, 999, 999)
 
 
 def get_player_suggestions(search_text, player_names, max_results=6):
@@ -339,18 +310,18 @@ def get_player_suggestions(search_text, player_names, max_results=6):
         return []
 
     query = normalize_name(search_text)
+    matches = []
 
-    candidates = []
     for name in player_names:
         if name in st.session_state.excluded_players:
             continue
 
         score = rank_player_match(name, query)
         if score[0] < 99:
-            candidates.append((score, name))
+            matches.append((score, name))
 
-    candidates.sort(key=lambda x: x[0])
-    return [name for _, name in candidates[:max_results]]
+    matches.sort(key=lambda x: x[0])
+    return [name for _, name in matches[:max_results]]
 
 
 def get_pick_label(prob_over, prob_under):
@@ -553,29 +524,27 @@ player_search = st.text_input(
     key="player_search"
 )
 
-if player_search.strip():
-    if (
-        st.session_state.selected_player
-        and normalize_name(player_search) != normalize_name(st.session_state.selected_player)
-        and normalize_name(player_search) not in normalize_name(st.session_state.selected_player)
-    ):
-        st.session_state.selected_player = None
-
 suggestions = get_player_suggestions(player_search, player_names)
+selected_player = None
 
-if len(player_search.strip()) >= 2 and st.session_state.selected_player is None:
+if len(player_search.strip()) >= 2:
     if suggestions:
-        st.markdown('<div class="suggestion-wrap">', unsafe_allow_html=True)
-        for idx, suggestion in enumerate(suggestions):
-            if st.button(suggestion, key=f"suggestion_{idx}"):
-                st.session_state.selected_player = suggestion
-                st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+        selected_player = suggestions[0]
+        st.session_state.selected_player = selected_player
+
+        if len(suggestions) > 1:
+            st.markdown(
+                '<div class="suggestions-line">Suggestions: ' + " • ".join(suggestions[1:]) + '</div>',
+                unsafe_allow_html=True
+            )
     else:
+        st.session_state.selected_player = None
         st.markdown(
-            '<div class="small-note">No active players matched that search.</div>',
+            '<div class="small-note">No players matched that search.</div>',
             unsafe_allow_html=True
         )
+else:
+    st.session_state.selected_player = None
 
 selected_player = st.session_state.selected_player
 
