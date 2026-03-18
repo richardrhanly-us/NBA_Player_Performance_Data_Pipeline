@@ -526,21 +526,25 @@ if selected_player:
                         event_id,
                         BOOKMAKER_MAP[selected_book]
                     )
+
                     with st.expander("Debug: API response"):
                         st.json(event_odds)
+
                     with st.expander("Debug: matched market outcomes"):
                         st.write("Selected player:", selected_player)
-                
+
                         for bookmaker in event_odds.get("bookmakers", []):
                             st.write("Bookmaker:", bookmaker.get("title"))
-                
+
                             for market in bookmaker.get("markets", []):
                                 st.write("Market key:", market.get("key"))
-                
+
                                 for outcome in market.get("outcomes", []):
                                     st.write(outcome)
+
                     prop = extract_player_prop(event_odds, selected_player)
-                        
+                    st.write("DEBUG PROP:", prop)
+
                     if prop:
                         sportsbook_line = prop["line"]
                         over_price = prop["over_price"]
@@ -548,7 +552,9 @@ if selected_player:
                         book_name = prop["bookmaker"]
                         book_updated = prop["last_update"]
                         line_source = "Sportsbook API"
-            except Exception:
+
+            except Exception as e:
+                st.write("DEBUG API ERROR:", e)
                 sportsbook_line = None
 
         default_line = sportsbook_line if sportsbook_line is not None else 20.5
