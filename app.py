@@ -1,5 +1,4 @@
 import os
-import re
 import json
 import time
 import requests
@@ -143,32 +142,16 @@ st.markdown("""
         margin-top: 10px;
     }
 
-    .selected-player {
-        margin-top: 12px;
-        padding: 10px 14px;
-        border-radius: 12px;
-        background: rgba(59, 130, 246, 0.14);
-        border: 1px solid rgba(96, 165, 250, 0.22);
-        color: #dbeafe;
-        font-weight: 600;
-    }
-
-    .suggestions-line {
-        margin-top: 8px;
-        color: #94a3b8;
-        font-size: 0.92rem;
-        line-height: 1.5;
-    }
-
-    .stSelectbox label, .stNumberInput label, .stCheckbox label, .stTextInput label {
+    .stSelectbox label, .stNumberInput label, .stCheckbox label {
         color: #e5e7eb !important;
         font-weight: 600;
     }
 
-    .stTextInput > div > div > input {
+    div[data-baseweb="select"] > div {
         background-color: #111827 !important;
-        color: white !important;
+        border: 1px solid rgba(255,255,255,0.10) !important;
         border-radius: 14px !important;
+        color: white !important;
     }
 
     .stNumberInput > div > div > input {
@@ -240,16 +223,6 @@ NBA_TEAMS = {
 
 
 # -----------------------------
-# Session state
-# -----------------------------
-if "selected_player" not in st.session_state:
-    st.session_state.selected_player = None
-
-if "excluded_players" not in st.session_state:
-    st.session_state.excluded_players = set()
-
-
-# -----------------------------
 # Helpers / cache
 # -----------------------------
 @st.cache_resource
@@ -276,52 +249,18 @@ def normalize_name(name: str) -> str:
 
     name = unicodedata.normalize("NFKD", str(name))
     name = "".join(char for char in name if not unicodedata.combining(char))
-    name = name.lower()
-    name = name.replace(".", "")
-    name = name.replace("’", "'")
-    name = name.replace("-", " ")
-    name = re.sub(r"\b(jr|sr|ii|iii|iv)\b", "", name)
-    name = re.sub(r"\s+", " ", name).strip()
-    return name
 
-
-def rank_player_match(player_name: str, query: str):
-    norm_name = normalize_name(player_name)
-    tokens = norm_name.split()
-
-    if norm_name == query:
-        return (0, 0, len(norm_name))
-
-    if norm_name.startswith(query):
-        return (1, 0, len(norm_name))
-
-    for i, token in enumerate(tokens):
-        if token.startswith(query):
-            return (2, i, len(norm_name))
-
-    if query in norm_name:
-        return (3, norm_name.find(query), len(norm_name))
-
-    return (99, 999, 999)
-
-
-def get_player_suggestions(search_text, player_names, max_results=6):
-    if not search_text or len(search_text.strip()) < 2:
-        return []
-
-    query = normalize_name(search_text)
-    matches = []
-
-    for name in player_names:
-        if name in st.session_state.excluded_players:
-            continue
-
-        score = rank_player_match(name, query)
-        if score[0] < 99:
-            matches.append((score, name))
-
-    matches.sort(key=lambda x: x[0])
-    return [name for _, name in matches[:max_results]]
+    return (
+        name.lower()
+        .replace(".", "")
+        .replace("’", "'")
+        .replace("-", " ")
+        .replace(" jr", "")
+        .replace(" sr", "")
+        .replace(" iii", "")
+        .replace(" ii", "")
+        .strip()
+    )
 
 
 def get_pick_label(prob_over, prob_under):
@@ -513,46 +452,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -----------------------------
-# Search UI
+# Controls
 # -----------------------------
 st.caption("Search for a player by name")
 
-player_search = st.text_input(
+selected_player = st.selectbox(
     "Player",
-    value="",
-    placeholder="Start typing a player name...",
-    key="player_search"
+    options=player_names,
+    index=None,
+    placeholder="Start typing a player name..."
 )
-
-suggestions = get_player_suggestions(player_search, player_names)
-selected_player = None
-
-if len(player_search.strip()) >= 2:
-    if suggestions:
-        selected_player = suggestions[0]
-        st.session_state.selected_player = selected_player
-
-        if len(suggestions) > 1:
-            st.markdown(
-                '<div class="suggestions-line">Suggestions: ' + " • ".join(suggestions[1:]) + '</div>',
-                unsafe_allow_html=True
-            )
-    else:
-        st.session_state.selected_player = None
-        st.markdown(
-            '<div class="small-note">No players matched that search.</div>',
-            unsafe_allow_html=True
-        )
-else:
-    st.session_state.selected_player = None
-
-selected_player = st.session_state.selected_player
-
-if selected_player:
-    st.markdown(
-        f'<div class="selected-player">Selected player: {selected_player}</div>',
-        unsafe_allow_html=True
-    )
 
 selected_book = st.selectbox(
     "Sportsbook",
@@ -658,9 +567,7 @@ if selected_player:
         df = get_player_gamelog_df(player_id, CURRENT_SEASON)
 
         if df.empty:
-            st.session_state.excluded_players.add(selected_player)
-            st.session_state.selected_player = None
-            st.warning("That player does not have a current-season game log yet, so they were removed from suggestions.")
+            st.warning("No game log found for this player yet.")
             st.stop()
 
         df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"])
@@ -843,7 +750,7 @@ else:
     <div class="section-card">
         <div class="section-title">Get Started</div>
         <div class="small-note">
-            Start typing at least 2 letters to search players.
+            Select a player to load game info, sportsbook line, and prediction.
         </div>
     </div>
     """, unsafe_allow_html=True)
