@@ -80,31 +80,33 @@ if player_name:
 if selected_player:
     player_id = player_name_map[selected_player]
 
-        # Current team info
-        player_info = commonplayerinfo.CommonPlayerInfo(player_id=player_id).get_data_frames()[0]
-        team_id = int(player_info.loc[0, "TEAM_ID"])
-        team_abbr = player_info.loc[0, "TEAM_ABBREVIATION"]
+    # Current team info
+    player_info = commonplayerinfo.CommonPlayerInfo(player_id=player_id).get_data_frames()[0]
+    team_id = int(player_info.loc[0, "TEAM_ID"])
+    team_abbr = player_info.loc[0, "TEAM_ABBREVIATION"]
 
-        # Today's NBA schedule
-        today_str = datetime.today().strftime("%m/%d/%Y")
-        board = scoreboardv2.ScoreboardV2(game_date=today_str)
-        game_header = board.game_header.get_data_frame()
-        line_score = board.line_score.get_data_frame()
+    # Today's NBA schedule
+    today_str = datetime.today().strftime("%m/%d/%Y")
+    board = scoreboardv2.ScoreboardV2(game_date=today_str)
+    game_header = board.game_header.get_data_frame()
+    line_score = board.line_score.get_data_frame()
 
-        todays_game = game_header[
-            (game_header["HOME_TEAM_ID"] == team_id) |
-            (game_header["VISITOR_TEAM_ID"] == team_id)
-        ]
+    todays_game = game_header[
+        (game_header["HOME_TEAM_ID"] == team_id) |
+        (game_header["VISITOR_TEAM_ID"] == team_id)
+    ]
 
-        st.subheader("Today's Game")
+    st.subheader("Today's Game")
 
-        if todays_game.empty:
-            st.info("No game")
-        else:
-            game = todays_game.iloc[0]
-            game_id = game["GAME_ID"]
+    if todays_game.empty:
+        st.info("No game")
+    else:
+        game = todays_game.iloc[0]
+        game_id = game["GAME_ID"]
 
-            game_lines = line_score[line_score["GAME_ID"] == game_id][["TEAM_ID", "TEAM_ABBREVIATION"]]
+        game_lines = line_score[
+            line_score["GAME_ID"] == game_id
+        ][["TEAM_ID", "TEAM_ABBREVIATION"]]
 
             if int(game["HOME_TEAM_ID"]) == team_id:
                 opponent_id = int(game["VISITOR_TEAM_ID"])
