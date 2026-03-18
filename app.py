@@ -47,53 +47,84 @@ if selected_player:
     team_id = int(player_info.loc[0, "TEAM_ID"])
     team_abbr = player_info.loc[0, "TEAM_ABBREVIATION"]
 
-    # Today's NBA schedule
 
-    eastern = pytz.timezone("US/Eastern")
-    now_et = datetime.now(eastern)
-    
-    if now_et.hour < 4:
-        now_et = now_et - pd.Timedelta(days=1)
-    
-    today_str = now_et.strftime("%m/%d/%Y")
-    
-    board = scoreboardv2.ScoreboardV2(game_date=today_str)
+def get_team_game_info(team_id, team_abbr, target_date_str):
+    board = scoreboardv2.ScoreboardV2(game_date=target_date_str)
     game_header = board.game_header.get_data_frame()
     line_score = board.line_score.get_data_frame()
 
-    todays_game = game_header[
+    team_game = game_header[
         (game_header["HOME_TEAM_ID"] == team_id) |
         (game_header["VISITOR_TEAM_ID"] == team_id)
     ]
 
-    st.subheader("Today's Game")
+    if team_game.empty:
+        return None
 
-    if todays_game.empty:
-        st.info("No game")
+    game = team_game.iloc[0]
+    game_id = game["GAME_ID"]
+
+    game_lines = line_score[
+        line_score["GAME_ID"] == game_id
+    ][["TEAM_ID", "TEAM_ABBREVIATION"]]
+
+    if int(game["HOME_TEAM_ID"]) == team_id:
+        opponent_id = int(game["VISITOR_TEAM_ID"])
+        opponent_row = game_lines[game_lines["TEAM_ID"] == opponent_id]
+        matchup_text = f"{team_abbr} vs {opponent_row.iloc[0]['TEAM_ABBREVIATION']}"
     else:
-        game = todays_game.iloc[0]
-        game_id = game["GAME_ID"]
+        opponent_id = int(game["HOME_TEAM_ID"])
+        opponent_row = game_lines[game_lines["TEAM_ID"] == opponent_id]
+        matchup_text = f"{team_abbr} @ {opponent_row.iloc[0]['TEAM_ABBREVIATION']}"
 
-        game_lines = line_score[
-            line_score["GAME_ID"] == game_id
-        ][["TEAM_ID", "TEAM_ABBREVIATION"]]
+    game_date = pd.to_datetime(game["GAME_DATE_EST"]).strftime("%B %d, %Y")
+    game_time = game["GAME_STATUS_TEXT"]
 
-        if int(game["HOME_TEAM_ID"]) == team_id:
-            opponent_id = int(game["VISITOR_TEAM_ID"])
-            opponent_row = game_lines[game_lines["TEAM_ID"] == opponent_id]
-            matchup_text = f"{team_abbr} vs {opponent_row.iloc[0]['TEAM_ABBREVIATION']}"
-        else:
-            opponent_id = int(game["HOME_TEAM_ID"])
-            opponent_row = game_lines[game_lines["TEAM_ID"] == opponent_id]
-            matchup_text = f"{team_abbr} @ {opponent_row.iloc[0]['TEAM_ABBREVIATION']}"
+    return {
+        "matchup": matchup_text,
+        "date": game_date,
+        "time": game_time
+    }
+    
+    # Today's NBA schedule
+eastern = pytz.timezone("US/Eastern")
+now_et = datetime.now(eastern)
 
-        game_date = pd.to_datetime(game["GAME_DATE_EST"]).strftime("%B %d, %Y")
-        game_time = game["GAME_STATUS_TEXT"]
+if now_et.hour < 4:
+    now_et = now_et - pd.Timedelta(days=1)
 
-        st.write(f"Matchup: {matchup_text}")
-        st.write(f"Date: {game_date}")
-        st.write(f"Time: {game_time}")
+today_str = now_et.strftime("%m/%d/%Y")
 
+st.subheader("Game Info")
+
+today_game_info = get_team_game_info(team_id, team_abbr, today_str)
+
+if today_game_info:
+    st.write("Status: Game today")
+    st.write(f"Matchup: {today_game_info['matchup']}")
+    st.write(f"Date: {today_game_info['date']}")
+    st.write(f"Time: {today_game_info['time']}")
+else:
+    next_game_info = None
+
+    for i in range(1, 8):
+        future_date = now_et + pd.Timedelta(days=i)
+        future_date_str = future_date.strftime("%m/%d/%Y")
+
+        next_game_info = get_team_game_info(team_id, team_abbr, future_date_str)
+
+        if next_game_info:
+            break
+
+    if next_game_info:
+        st.write("Status: No game today")
+        st.write("Next game:")
+        st.write(f"Matchup: {next_game_info['matchup']}")
+        st.write(f"Date: {next_game_info['date']}")
+        st.write(f"Time: {next_game_info['time']}")
+    else:
+        st.info("No game today, and no next game found in the next 7 days.")
+    
     # Player game logs for model features
     gamelog = playergamelog.PlayerGameLog(
         player_id=player_id,
