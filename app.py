@@ -87,34 +87,34 @@ if selected_player:
 
     
     # Today's NBA schedule
-eastern = pytz.timezone("US/Eastern")
-now_et = datetime.now(eastern)
-
-if now_et.hour < 4:
-    now_et = now_et - pd.Timedelta(days=1)
-
-today_str = now_et.strftime("%m/%d/%Y")
-
-st.subheader("Game Info")
-
-today_game_info = get_team_game_info(team_id, team_abbr, today_str)
-
-if today_game_info:
-    st.write("Status: Game today")
-    st.write(f"Matchup: {today_game_info['matchup']}")
-    st.write(f"Date: {today_game_info['date']}")
-    st.write(f"Time: {today_game_info['time']}")
-else:
-    next_game_info = None
-
-    for i in range(1, 8):
-        future_date = now_et + pd.Timedelta(days=i)
-        future_date_str = future_date.strftime("%m/%d/%Y")
-
-        next_game_info = get_team_game_info(team_id, team_abbr, future_date_str)
-
-        if next_game_info:
-            break
+    eastern = pytz.timezone("US/Eastern")
+    now_et = datetime.now(eastern)
+    
+    if now_et.hour < 4:
+        now_et = now_et - pd.Timedelta(days=1)
+    
+    today_str = now_et.strftime("%m/%d/%Y")
+    
+    st.subheader("Game Info")
+    
+    today_game_info = get_team_game_info(team_id, team_abbr, today_str)
+    
+    if today_game_info:
+        st.write("Status: Game today")
+        st.write(f"Matchup: {today_game_info['matchup']}")
+        st.write(f"Date: {today_game_info['date']}")
+        st.write(f"Time: {today_game_info['time']}")
+    else:
+        next_game_info = None
+    
+        for i in range(1, 8):
+            future_date = now_et + pd.Timedelta(days=i)
+            future_date_str = future_date.strftime("%m/%d/%Y")
+    
+            next_game_info = get_team_game_info(team_id, team_abbr, future_date_str)
+    
+            if next_game_info:
+                break
 
     if next_game_info:
         st.write("Status: No game today")
