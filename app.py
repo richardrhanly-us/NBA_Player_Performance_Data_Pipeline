@@ -282,8 +282,14 @@ st.markdown("""
 
     .stNumberInput > div > div > input {
         background-color: #111827 !important;
-        color: white !important;
+        color: #ffffff !important;
         border-radius: 14px !important;
+        opacity: 1 !important;
+        -webkit-text-fill-color: #ffffff !important;
+    }
+    
+    .stNumberInput input::placeholder {
+        color: #9ca3af !important;
     }
 
     .stNumberInput button {
@@ -687,17 +693,11 @@ selected_search_name = st.selectbox(
 
 selected_player = search_name_to_actual[selected_search_name] if selected_search_name else None
 
-col_book, col_toggle = st.columns([2.2, 1.2])
-
-with col_book:
-    selected_book = st.selectbox(
-        "Search Sportsbook",
-        options=list(BOOKMAKER_MAP.keys()),
-        index=0
-    )
-
-with col_toggle:
-    manual_override = st.checkbox("Manual line", value=False)
+selected_book = st.selectbox(
+    "Sportsbook",
+    options=list(BOOKMAKER_MAP.keys()),
+    index=0
+)
 
 odds_api_key = os.getenv("ODDS_API_KEY")
 
@@ -797,14 +797,20 @@ if selected_player:
                 sportsbook_line = None
 
         default_line = sportsbook_line if sportsbook_line is not None else 20.5
-
-        line = st.number_input(
-            "Points line",
-            min_value=0.0,
-            value=float(default_line),
-            step=0.5,
-            disabled=(sportsbook_line is not None and not manual_override)
-        )
+        
+        col_line, col_toggle = st.columns([4, 1])
+        
+        with col_line:
+            line = st.number_input(
+                "Points line",
+                min_value=0.0,
+                value=float(default_line),
+                step=0.5,
+                disabled=(sportsbook_line is not None and not manual_override)
+            )
+        
+        with col_toggle:
+            manual_override = st.checkbox("Manual line", value=False)
 
         if sportsbook_line is not None and not manual_override:
             line = sportsbook_line
