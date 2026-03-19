@@ -14,7 +14,7 @@ from datetime import datetime
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
-APP_VERSION = "v1.14"
+APP_VERSION = "v1.15"
 
 
 st.set_page_config(
@@ -459,16 +459,24 @@ def fetch_upcoming_nba_events(api_key):
 def find_matching_event_id(events, matchup_text):
     parts = matchup_text.replace("vs", "@").split("@")
     teams = [p.strip() for p in parts if p.strip()]
+
     if len(teams) != 2:
         return None
 
-    full_1 = NBA_TEAMS.get(teams[0])
-    full_2 = NBA_TEAMS.get(teams[1])
+    team1 = NBA_TEAMS.get(teams[0])
+    team2 = NBA_TEAMS.get(teams[1])
+
+    if not team1 or not team2:
+        return None
+
+    team1 = team1.lower()
+    team2 = team2.lower()
 
     for event in events:
-        home_team = event.get("home_team")
-        away_team = event.get("away_team")
-        if {home_team, away_team} == {full_1, full_2}:
+        home = event.get("home_team", "").lower()
+        away = event.get("away_team", "").lower()
+
+        if (team1 in home and team2 in away) or (team2 in home and team1 in away):
             return event.get("id")
 
     return None
