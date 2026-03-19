@@ -14,7 +14,7 @@ from datetime import datetime
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
-APP_VERSION = "v1.16"
+APP_VERSION = "v1.17 - Style changes"
 
 
 st.set_page_config(
@@ -225,6 +225,29 @@ st.markdown("""
         opacity: 0.6;
         margin-bottom: 8px;
     }
+
+    input, textarea {
+        color: #ffffff !important;
+        caret-color: #ffffff !important;
+    }
+
+    input::placeholder {
+        color: #9ca3af !important;
+    }
+
+    div[data-baseweb="select"] input {
+        color: white !important;
+    }
+
+    div[data-baseweb="select"] span {
+        color: white !important;
+    }
+
+    ul[role="listbox"] {
+        background-color: #111827 !important;
+        color: white !important;
+    }
+    
 </style>
 """, unsafe_allow_html=True)
 
@@ -581,19 +604,20 @@ if selected_player:
 
         primary = team_theme["primary"]
         secondary = team_theme["secondary"]
-
+        
         model_bg = (
             f"linear-gradient(135deg, "
-            f"{hex_to_rgba(primary, 0.22)} 0%, "
-            f"{hex_to_rgba(secondary, 0.16)} 45%, "
-            f"rgba(2, 6, 23, 0.98) 100%)"
+            f"{hex_to_rgba(primary, 0.35)} 0%, "
+            f"{hex_to_rgba(secondary, 0.25)} 50%, "
+            f"rgba(15, 23, 42, 0.95) 100%)"
         )
+        
         model_border = primary
         model_glow = hex_to_rgba(primary, 0.28)
         model_title_color = secondary
-        model_stat_bg = hex_to_rgba(primary, 0.10)
+        model_stat_bg = "rgba(255, 255, 255, 0.06)"
         model_stat_border = hex_to_rgba(secondary, 0.32)
-        model_label_color = secondary
+        model_label_color = "#cbd5e1"
 
         eastern = pytz.timezone("US/Eastern")
         now_et = datetime.now(eastern)
