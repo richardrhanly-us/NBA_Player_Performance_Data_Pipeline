@@ -148,14 +148,15 @@ st.markdown("""
         font-weight: 900;
     }
 
-    .pick-banner {
-        margin-top: 16px;
-        border-radius: 14px;
-        padding: 14px 16px;
-        font-size: 1rem;
-        font-weight: 800;
-        text-align: center;
-    }
+        .pick-banner {
+            margin-top: 16px;
+            border-radius: 14px;
+            padding: 14px 16px;
+            font-size: 1.05rem;
+            font-weight: 900;
+            text-align: center;
+            letter-spacing: 0.05em;
+        }
 
     .small-note {
         color: #94a3b8;
