@@ -14,7 +14,7 @@ from datetime import datetime
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
-APP_VERSION = "v1.24 - Updated model"
+APP_VERSION = "v1.25 - Updated model - debug"
 
 
 st.set_page_config(
@@ -396,15 +396,12 @@ TEAM_THEMES = {
 }
 
 
+def get_model_mtime():
+    return os.path.getmtime("models/points_regression.pkl")
+
 @st.cache_resource
-def load_model():
+def load_model(_mtime):
     return joblib.load("models/points_regression.pkl")
-
-
-@st.cache_data
-def load_model_stats():
-    with open("models/points_model_stats.json", "r") as f:
-        return json.load(f)
 
 
 def normalize_name(name: str) -> str:
@@ -634,12 +631,12 @@ def extract_player_prop(event_odds_json, selected_player):
 
     return None
 
-
-model = load_model()
-model_stats = load_model_stats()
+model = load_model(get_model_mtime())
+model_stats = load_model_stats(get_model_stats_mtime())
 points_std = model_stats["std_dev"]
 _, player_name_map, search_name_to_actual, player_search_names = load_active_players()
 
+st.write("Model modified:", time.ctime(get_model_mtime()))
 
 st.markdown(f"""
 <div class="hero">
