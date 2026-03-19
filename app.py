@@ -816,38 +816,69 @@ if selected_player:
             - 0.4 * df["PF"]
             - df["TOV"]
         )
-
-        df["player_avg_pts"] = df["PTS"].shift(1).expanding().mean()
+        
+        df["PLAYER_NAME"] = selected_player
+        
+        df["player_avg_pts"] = df.groupby("PLAYER_NAME")["PTS"].transform(
+            lambda x: x.shift(1).expanding().mean()
+        )
         df["player_avg_pts_sq"] = df["player_avg_pts"] ** 2
-
-        df["last3_pts"] = df["PTS"].shift(1).rolling(3).mean()
-        df["last5_pts"] = df["PTS"].shift(1).rolling(5).mean()
-        df["last10_pts"] = df["PTS"].shift(1).rolling(10).mean()
-        df["last20_pts"] = df["PTS"].shift(1).rolling(20).mean()
-
-        df["last5_fga"] = df["FGA"].shift(1).rolling(5).mean()
-        df["last5_fta"] = df["FTA"].shift(1).rolling(5).mean()
-        df["last5_minutes"] = df["MIN"].shift(1).rolling(5).mean()
-        df["last5_gmsc"] = df["gmsc"].shift(1).rolling(5).mean()
-
+        
+        df["last3_pts"] = df.groupby("PLAYER_NAME")["PTS"].transform(
+            lambda x: x.shift(1).rolling(3).mean()
+        )
+        df["last5_pts"] = df.groupby("PLAYER_NAME")["PTS"].transform(
+            lambda x: x.shift(1).rolling(5).mean()
+        )
+        df["last10_pts"] = df.groupby("PLAYER_NAME")["PTS"].transform(
+            lambda x: x.shift(1).rolling(10).mean()
+        )
+        df["last20_pts"] = df.groupby("PLAYER_NAME")["PTS"].transform(
+            lambda x: x.shift(1).rolling(20).mean()
+        )
+        
+        df["last5_fga"] = df.groupby("PLAYER_NAME")["FGA"].transform(
+            lambda x: x.shift(1).rolling(5).mean()
+        )
+        df["last5_fta"] = df.groupby("PLAYER_NAME")["FTA"].transform(
+            lambda x: x.shift(1).rolling(5).mean()
+        )
+        df["last5_minutes"] = df.groupby("PLAYER_NAME")["MIN"].transform(
+            lambda x: x.shift(1).rolling(5).mean()
+        )
+        df["last5_gmsc"] = df.groupby("PLAYER_NAME")["gmsc"].transform(
+            lambda x: x.shift(1).rolling(5).mean()
+        )
+        
         df["home_game"] = df["MATCHUP"].str.contains("vs").astype(int)
-
-        df["days_rest"] = df["GAME_DATE"].diff().dt.days
+        
+        df["days_rest"] = df.groupby("PLAYER_NAME")["GAME_DATE"].diff().dt.days
         df["days_rest"] = df["days_rest"].fillna(3)
         df["is_back_to_back"] = (df["days_rest"] == 1).astype(int)
-
+        
         df["usage_proxy"] = df["FGA"] + 0.44 * df["FTA"] + df["TOV"]
-        df["last5_usage_proxy"] = df["usage_proxy"].shift(1).rolling(5).mean()
-
-        df["season_minutes_avg"] = df["MIN"].shift(1).expanding().mean()
-
-        df["minutes_volatility"] = df["MIN"].shift(1).rolling(5).std()
-        df["points_volatility"] = df["PTS"].shift(1).rolling(5).std()
-
+        df["last5_usage_proxy"] = df.groupby("PLAYER_NAME")["usage_proxy"].transform(
+            lambda x: x.shift(1).rolling(5).mean()
+        )
+        
+        df["season_minutes_avg"] = df.groupby("PLAYER_NAME")["MIN"].transform(
+            lambda x: x.shift(1).expanding().mean()
+        )
+        
+        df["minutes_volatility"] = df.groupby("PLAYER_NAME")["MIN"].transform(
+            lambda x: x.shift(1).rolling(5).std()
+        )
+        df["points_volatility"] = df.groupby("PLAYER_NAME")["PTS"].transform(
+            lambda x: x.shift(1).rolling(5).std()
+        )
+        
         if "FG3A" in df.columns:
             df["FG3A"] = pd.to_numeric(df["FG3A"], errors="coerce")
-            df["last5_3pa"] = df["FG3A"].shift(1).rolling(5).mean()
+            df["last5_3pa"] = df.groupby("PLAYER_NAME")["FG3A"].transform(
+                lambda x: x.shift(1).rolling(5).mean()
+            )
 
+        
         required_features = [
             "player_avg_pts",
             "player_avg_pts_sq",
