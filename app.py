@@ -899,8 +899,8 @@ if selected_player:
             else f"The model projects a {prob_over:.0%} chance of the over hitting compared to {prob_under:.0%} for the under."
         )
 
-        st.markdown(
-f"""
+                st.markdown(
+            f"""
 <div class="model-card" style="
 background: {model_bg};
 border: 3px solid {model_border};
@@ -909,60 +909,61 @@ box-shadow:
     0 0 28px {model_glow},
     0 0 50px {hex_to_rgba(primary, 0.18)};
 ">
-<div class="model-title" style="color: #ffffff;">
-    {selected_player}
-</div>
-<div class="model-subtitle">
-    Model Output
-</div>
-
-<div class="model-main">
-    <div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};">
-        <div class="model-stat-label" style="color: {model_label_color};">Predicted Points</div>
-        <div class="model-stat-value">{predicted_points:.2f}</div>
+    <div class="model-title" style="color: #ffffff;">
+        {selected_player}
     </div>
 
-    <div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};">
-        <div class="model-stat-label" style="color: {model_label_color};">Sportsbook Line</div>
-        <div class="model-stat-value">{line:.1f}</div>
+    <div class="model-subtitle">
+        Model Output
     </div>
 
-    <div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};">
-        <div class="model-stat-label" style="color: {model_label_color};">Model Edge</div>
-        <div class="model-stat-value">{edge:+.2f}</div>
+    <div class="model-main">
+        <div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};">
+            <div class="model-stat-label" style="color: {model_label_color};">Predicted Points</div>
+            <div class="model-stat-value">{predicted_points:.2f}</div>
+        </div>
+
+        <div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};">
+            <div class="model-stat-label" style="color: {model_label_color};">Sportsbook Line</div>
+            <div class="model-stat-value">{line:.1f}</div>
+        </div>
+
+        <div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};">
+            <div class="model-stat-label" style="color: {model_label_color};">Model Edge</div>
+            <div class="model-stat-value">{edge:+.2f}</div>
+        </div>
+
+        <div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};">
+            <div class="model-stat-label" style="color: {model_label_color};">Probability Split</div>
+            <div class="model-stat-value">O {prob_over:.1%} / U {prob_under:.1%}</div>
+        </div>
     </div>
 
-    <div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};">
-        <div class="model-stat-label" style="color: {model_label_color};">Probability Split</div>
-        <div class="model-stat-value">O {prob_over:.1%} / U {prob_under:.1%}</div>
+    <div class="prob-interpretation" style="
+        margin-top: 8px;
+        margin-bottom: 10px;
+        padding: 8px 2px 0 2px;
+        font-size: 0.98rem;
+        color: #cbd5e1;
+        opacity: 0.95;
+    ">
+        {interpretation_text}
     </div>
-</div>
 
-<div class="prob-interpretation" style="
-margin-top: 8px;
-margin-bottom: 10px;
-padding: 8px 2px 0 2px;
-font-size: 0.98rem;
-color: #cbd5e1;
-opacity: 0.95;
-">
-    {interpretation_text}
-</div>
+    <div class="pick-banner" style="
+        background: {pick_bg};
+        color: {pick_text_color};
+        border: 2px solid {pick_border};
+    ">
+        {pick_text}
+    </div>
 
-<div class="pick-banner" style="
-background: {pick_bg};
-color: {pick_text_color};
-border: 2px solid {pick_border};
-">
-    {pick_text}
-</div>
-
-<div class="small-note">
-    Trained regression model output compared against the current sportsbook line.
-</div>
+    <div class="small-note">
+        Trained regression model output compared against the current sportsbook line.
+    </div>
 </div>
 """,
-unsafe_allow_html=True
+            unsafe_allow_html=True
         )
 
         st.markdown(f"""
