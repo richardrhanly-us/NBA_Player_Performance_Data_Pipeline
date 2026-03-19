@@ -14,7 +14,7 @@ from datetime import datetime
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
-APP_VERSION = "v1.25 - Updated model - debug"
+APP_VERSION = "v1.26 - model cache + feature sync fix"
 
 
 st.set_page_config(
@@ -399,9 +399,20 @@ TEAM_THEMES = {
 def get_model_mtime():
     return os.path.getmtime("models/points_regression.pkl")
 
+
 @st.cache_resource
 def load_model(_mtime):
     return joblib.load("models/points_regression.pkl")
+
+
+def get_model_stats_mtime():
+    return os.path.getmtime("models/points_model_stats.json")
+
+
+@st.cache_data
+def load_model_stats(_mtime):
+    with open("models/points_model_stats.json", "r") as f:
+        return json.load(f)
 
 
 def normalize_name(name: str) -> str:
@@ -631,12 +642,12 @@ def extract_player_prop(event_odds_json, selected_player):
 
     return None
 
+
 model = load_model(get_model_mtime())
 model_stats = load_model_stats(get_model_stats_mtime())
 points_std = model_stats["std_dev"]
 _, player_name_map, search_name_to_actual, player_search_names = load_active_players()
 
-st.write("Model modified:", time.ctime(get_model_mtime()))
 
 st.markdown(f"""
 <div class="hero">
@@ -790,6 +801,7 @@ if selected_player:
             st.warning("No game log found for this player yet.")
             st.stop()
 
+        df["PLAYER_NAME"] = selected_player
         df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"])
         df = df.sort_values("GAME_DATE").reset_index(drop=True)
 
@@ -799,6 +811,9 @@ if selected_player:
         ]
         for col in numeric_cols:
             df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        if "FG3A" in df.columns:
+            df["FG3A"] = pd.to_numeric(df["FG3A"], errors="coerce")
 
         df["gmsc"] = (
             df["PTS"]
@@ -813,14 +828,12 @@ if selected_player:
             - 0.4 * df["PF"]
             - df["TOV"]
         )
-        
-        df["PLAYER_NAME"] = selected_player
-        
+
         df["player_avg_pts"] = df.groupby("PLAYER_NAME")["PTS"].transform(
             lambda x: x.shift(1).expanding().mean()
         )
         df["player_avg_pts_sq"] = df["player_avg_pts"] ** 2
-        
+
         df["last3_pts"] = df.groupby("PLAYER_NAME")["PTS"].transform(
             lambda x: x.shift(1).rolling(3).mean()
         )
@@ -833,7 +846,7 @@ if selected_player:
         df["last20_pts"] = df.groupby("PLAYER_NAME")["PTS"].transform(
             lambda x: x.shift(1).rolling(20).mean()
         )
-        
+
         df["last5_fga"] = df.groupby("PLAYER_NAME")["FGA"].transform(
             lambda x: x.shift(1).rolling(5).mean()
         )
@@ -846,36 +859,34 @@ if selected_player:
         df["last5_gmsc"] = df.groupby("PLAYER_NAME")["gmsc"].transform(
             lambda x: x.shift(1).rolling(5).mean()
         )
-        
+
         df["home_game"] = df["MATCHUP"].str.contains("vs").astype(int)
-        
+
         df["days_rest"] = df.groupby("PLAYER_NAME")["GAME_DATE"].diff().dt.days
         df["days_rest"] = df["days_rest"].fillna(3)
         df["is_back_to_back"] = (df["days_rest"] == 1).astype(int)
-        
+
         df["usage_proxy"] = df["FGA"] + 0.44 * df["FTA"] + df["TOV"]
         df["last5_usage_proxy"] = df.groupby("PLAYER_NAME")["usage_proxy"].transform(
             lambda x: x.shift(1).rolling(5).mean()
         )
-        
+
         df["season_minutes_avg"] = df.groupby("PLAYER_NAME")["MIN"].transform(
             lambda x: x.shift(1).expanding().mean()
         )
-        
+
         df["minutes_volatility"] = df.groupby("PLAYER_NAME")["MIN"].transform(
             lambda x: x.shift(1).rolling(5).std()
         )
         df["points_volatility"] = df.groupby("PLAYER_NAME")["PTS"].transform(
             lambda x: x.shift(1).rolling(5).std()
         )
-        
+
         if "FG3A" in df.columns:
-            df["FG3A"] = pd.to_numeric(df["FG3A"], errors="coerce")
             df["last5_3pa"] = df.groupby("PLAYER_NAME")["FG3A"].transform(
                 lambda x: x.shift(1).rolling(5).mean()
             )
 
-        
         required_features = [
             "player_avg_pts",
             "player_avg_pts_sq",
