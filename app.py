@@ -14,7 +14,7 @@ from datetime import datetime
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
-APP_VERSION = "v1.20 - section card cleanup"
+APP_VERSION = "v1.21 - elevated model card layout"
 
 
 st.set_page_config(
@@ -42,40 +42,100 @@ st.markdown("""
     }
 
     .hero {
-        background: linear-gradient(135deg, #111827 0%, #1e293b 100%);
+        background:
+            radial-gradient(circle at top left, rgba(59,130,246,0.18), transparent 34%),
+            radial-gradient(circle at top right, rgba(168,85,247,0.14), transparent 30%),
+            linear-gradient(135deg, #111827 0%, #1e293b 100%);
         border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 20px;
-        padding: 24px 22px 18px 22px;
-        margin-bottom: 18px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+        border-radius: 22px;
+        padding: 26px 24px 18px 24px;
+        margin-bottom: 14px;
+        box-shadow: 0 14px 34px rgba(0,0,0,0.30);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .hero::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent);
+        pointer-events: none;
     }
 
     .hero-title {
-        font-size: 2rem;
-        font-weight: 800;
+        font-size: 2.1rem;
+        font-weight: 900;
         margin-bottom: 6px;
         color: #ffffff;
+        letter-spacing: -0.02em;
+        position: relative;
+        z-index: 1;
     }
 
     .hero-subtitle {
         color: #cbd5e1;
-        font-size: 0.98rem;
-        margin-bottom: 0;
+        font-size: 1rem;
+        margin-bottom: 14px;
+        position: relative;
+        z-index: 1;
     }
 
-    .version-tag {
-        color: #7dd3fc;
-        font-size: 0.85rem;
+    .hero-pills {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        position: relative;
+        z-index: 1;
+    }
+
+    .hero-pill {
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.08);
+        color: #dbeafe;
+        padding: 7px 12px;
+        border-radius: 999px;
+        font-size: 0.78rem;
         font-weight: 700;
-        margin: 4px 0 12px 4px;
+        letter-spacing: 0.02em;
+    }
+
+    .control-panel {
+        background:
+            linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(17,24,39,0.96) 100%);
+        border: 1px solid rgba(255,255,255,0.07);
+        border-radius: 18px;
+        padding: 18px 18px 8px 18px;
+        margin-top: 8px;
+        margin-bottom: 16px;
+        box-shadow: 0 10px 28px rgba(0,0,0,0.22);
+    }
+
+    .control-title {
+        color: #f8fafc;
+        font-size: 1rem;
+        font-weight: 800;
+        margin-bottom: 4px;
+    }
+
+    .control-subtitle {
+        color: #94a3b8;
+        font-size: 0.88rem;
+        margin-bottom: 14px;
+    }
+
+    .top-divider {
+        height: 1px;
+        background: linear-gradient(90deg, rgba(125,211,252,0.0), rgba(125,211,252,0.35), rgba(125,211,252,0.0));
+        margin: 10px 0 16px 0;
     }
 
     .section-card {
         background: rgba(15, 23, 42, 0.96);
         border: 1px solid rgba(255,255,255,0.06);
-        border-radius: 16px;
+        border-radius: 18px;
         padding: 16px;
-        margin-top: 16px;
+        margin-top: 14px;
         box-shadow: 0 6px 18px rgba(0,0,0,0.18);
     }
 
@@ -114,14 +174,30 @@ st.markdown("""
         line-height: 1.2;
     }
 
+    .model-card {
+        border-radius: 18px;
+        padding: 18px 18px 14px 18px;
+        margin-top: 4px;
+        margin-bottom: 16px;
+    }
+
     .model-title {
-        font-size: 1.05rem;
+        font-size: 1.15rem;
         font-weight: 900;
         letter-spacing: 0.14em;
         text-transform: uppercase;
-        margin-bottom: 16px;
+        margin-bottom: 14px;
         color: white;
         text-shadow: 0 0 6px rgba(255,255,255,0.25);
+    }
+
+    .model-subtitle {
+        font-size: 0.75rem;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        opacity: 0.7;
+        margin-bottom: 10px;
+        color: #e2e8f0;
     }
 
     .model-main {
@@ -221,14 +297,6 @@ st.markdown("""
         overflow: hidden;
     }
 
-    .model-subtitle {
-        font-size: 0.75rem;
-        letter-spacing: 1px;
-        text-transform: uppercase;
-        opacity: 0.6;
-        margin-bottom: 8px;
-    }
-
     input, textarea {
         color: #ffffff !important;
         caret-color: #ffffff !important;
@@ -249,6 +317,26 @@ st.markdown("""
     ul[role="listbox"] {
         background-color: #111827 !important;
         color: white !important;
+    }
+
+    @media (max-width: 900px) {
+        .summary-strip,
+        .recent-grid,
+        .model-main {
+            grid-template-columns: 1fr 1fr;
+        }
+    }
+
+    @media (max-width: 640px) {
+        .summary-strip,
+        .recent-grid,
+        .model-main {
+            grid-template-columns: 1fr;
+        }
+
+        .hero-title {
+            font-size: 1.7rem;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -577,16 +665,26 @@ points_std = model_stats["std_dev"]
 _, player_name_map, search_name_to_actual, player_search_names = load_active_players()
 
 
-st.markdown("""
+st.markdown(f"""
 <div class="hero">
     <div class="hero-title">NBA Points Prop Predictor</div>
-    <p class="hero-subtitle">Search a player, auto-load the sportsbook line, and compare it to the model.</p>
+    <p class="hero-subtitle">Search a player, pull the latest line, and compare it to your model.</p>
+    <div class="hero-pills">
+        <div class="hero-pill">Live sportsbook lookup</div>
+        <div class="hero-pill">Model vs line edge</div>
+        <div class="hero-pill">Recent form snapshot</div>
+        <div class="hero-pill">{APP_VERSION}</div>
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown(f'<div class="version-tag">App version {APP_VERSION}</div>', unsafe_allow_html=True)
-
-st.caption("Search for a player by name")
+st.markdown("""
+<div class="control-panel">
+    <div class="control-title">Build a Prop</div>
+    <div class="control-subtitle">Pick a player, choose a book, and load the current points line.</div>
+    <div class="top-divider"></div>
+</div>
+""", unsafe_allow_html=True)
 
 selected_search_name = st.selectbox(
     "Player",
@@ -597,13 +695,18 @@ selected_search_name = st.selectbox(
 
 selected_player = search_name_to_actual[selected_search_name] if selected_search_name else None
 
-selected_book = st.selectbox(
-    "Sportsbook",
-    options=list(BOOKMAKER_MAP.keys()),
-    index=0
-)
+col_book, col_toggle = st.columns([2.2, 1.2])
 
-manual_override = st.checkbox("Manually override sportsbook line", value=False)
+with col_book:
+    selected_book = st.selectbox(
+        "Sportsbook",
+        options=list(BOOKMAKER_MAP.keys()),
+        index=0
+    )
+
+with col_toggle:
+    manual_override = st.checkbox("Manual line", value=False)
+
 odds_api_key = os.getenv("ODDS_API_KEY")
 
 if selected_player:
@@ -790,6 +893,78 @@ if selected_player:
             pick_border = "#94a3b8"
             pick_text_color = "#e5e7eb"
 
+        interpretation_text = (
+            "The model sees no meaningful edge either way, with the probability split essentially even."
+            if abs(prob_over - prob_under) <= 0.02
+            else f"The model projects a {prob_over:.0%} chance of the over hitting compared to {prob_under:.0%} for the under."
+        )
+
+        st.markdown(
+f"""
+<div class="model-card" style="
+background: {model_bg};
+border: 3px solid {model_border};
+box-shadow:
+    0 0 0 1px {hex_to_rgba(secondary, 0.16)},
+    0 0 28px {model_glow},
+    0 0 50px {hex_to_rgba(primary, 0.18)};
+">
+<div class="model-title" style="color: #ffffff;">
+    {selected_player}
+</div>
+<div class="model-subtitle">
+    Model Output
+</div>
+
+<div class="model-main">
+    <div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};">
+        <div class="model-stat-label" style="color: {model_label_color};">Predicted Points</div>
+        <div class="model-stat-value">{predicted_points:.2f}</div>
+    </div>
+
+    <div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};">
+        <div class="model-stat-label" style="color: {model_label_color};">Sportsbook Line</div>
+        <div class="model-stat-value">{line:.1f}</div>
+    </div>
+
+    <div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};">
+        <div class="model-stat-label" style="color: {model_label_color};">Model Edge</div>
+        <div class="model-stat-value">{edge:+.2f}</div>
+    </div>
+
+    <div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};">
+        <div class="model-stat-label" style="color: {model_label_color};">Probability Split</div>
+        <div class="model-stat-value">O {prob_over:.1%} / U {prob_under:.1%}</div>
+    </div>
+</div>
+
+<div class="prob-interpretation" style="
+margin-top: 8px;
+margin-bottom: 10px;
+padding: 8px 2px 0 2px;
+font-size: 0.98rem;
+color: #cbd5e1;
+opacity: 0.95;
+">
+    {interpretation_text}
+</div>
+
+<div class="pick-banner" style="
+background: {pick_bg};
+color: {pick_text_color};
+border: 2px solid {pick_border};
+">
+    {pick_text}
+</div>
+
+<div class="small-note">
+    Trained regression model output compared against the current sportsbook line.
+</div>
+</div>
+""",
+unsafe_allow_html=True
+        )
+
         st.markdown(f"""
 <div class="section-card">
     <div class="section-title">Game Info</div>
@@ -851,80 +1026,6 @@ if selected_player:
 
         if sportsbook_message:
             st.info(sportsbook_message)
-
-        interpretation_text = (
-            "The model sees no meaningful edge either way, with the probability split essentially even."
-            if abs(prob_over - prob_under) <= 0.02
-            else f"The model projects a {prob_over:.0%} chance of the over hitting compared to {prob_under:.0%} for the under."
-        )
-
-        st.markdown(
-f"""
-<div class="model-card" style="
-background: {model_bg};
-border: 3px solid {model_border};
-box-shadow:
-    0 0 0 1px {hex_to_rgba(secondary, 0.16)},
-    0 0 28px {model_glow},
-    0 0 50px {hex_to_rgba(primary, 0.18)};
-">
-
-<div class="model-title" style="color: #ffffff;">
-    {selected_player}
-</div>
-<div class="model-subtitle">
-    Model Output
-</div>
-
-<div class="model-main">
-<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};">
-<div class="model-stat-label" style="color: {model_label_color};">Predicted Points</div>
-<div class="model-stat-value">{predicted_points:.2f}</div>
-</div>
-
-<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};">
-<div class="model-stat-label" style="color: {model_label_color};">Sportsbook Line</div>
-<div class="model-stat-value">{line:.1f}</div>
-</div>
-
-<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};">
-<div class="model-stat-label" style="color: {model_label_color};">Model Edge</div>
-<div class="model-stat-value">{edge:+.2f}</div>
-</div>
-
-<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};">
-<div class="model-stat-label" style="color: {model_label_color};">Probability Split</div>
-<div class="model-stat-value">O {prob_over:.1%} / U {prob_under:.1%}</div>
-</div>
-</div>
-
-<div class="prob-interpretation" style="
-margin-top: 8px;
-margin-bottom: 10px;
-padding: 8px 2px 0 2px;
-font-size: 0.98rem;
-color: #cbd5e1;
-opacity: 0.95;
-">
-{interpretation_text}
-</div>
-
-<div class="pick-banner" style="
-background: {pick_bg};
-color: {pick_text_color};
-border: 2px solid {pick_border};
-">
-{pick_text}
-</div>
-
-<div class="small-note">
-Trained regression model output compared against the current sportsbook line.
-</div>
-
-</div>
-""",
-unsafe_allow_html=True
-        )
 
         recent_games = df.sort_values("GAME_DATE", ascending=False).head(5).copy()
         recent_games["GAME_DATE"] = recent_games["GAME_DATE"].dt.strftime("%Y-%m-%d")
