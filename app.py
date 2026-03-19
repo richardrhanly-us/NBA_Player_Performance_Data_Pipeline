@@ -14,7 +14,7 @@ from datetime import datetime
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
-APP_VERSION = "v1.17 - Style changes"
+APP_VERSION = "v1.18 - Style changes"
 
 
 st.set_page_config(
@@ -114,13 +114,15 @@ st.markdown("""
         line-height: 1.2;
     }
 
-    .model-title {
-        font-size: 0.9rem;
-        font-weight: 900;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        margin-bottom: 16px;
-    }
+        .model-title {
+            font-size: 1.05rem;
+            font-weight: 900;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+            color: white;
+            text-shadow: 0 0 6px rgba(255,255,255,0.25);
+        }
 
     .model-main {
         display: grid;
@@ -764,17 +766,19 @@ if selected_player:
         prob_over = 1 - norm.cdf(line, loc=predicted_points, scale=points_std)
         prob_under = 1 - prob_over
         pick_text, pick_kind = get_pick_label(prob_over, prob_under)
-
+        
         if pick_kind == "over":
-            pick_bg = hex_to_rgba(secondary, 0.16)
-            pick_border = secondary
-            pick_text_color = secondary
+            pick_bg = "rgba(34,197,94,0.25)"   # green
+            pick_border = "#22c55e"
+            pick_text_color = "#22c55e"
+        
         elif pick_kind == "under":
-            pick_bg = hex_to_rgba(primary, 0.18)
-            pick_border = secondary
-            pick_text_color = secondary
+            pick_bg = "rgba(239,68,68,0.25)"   # red
+            pick_border = "#ef4444"
+            pick_text_color = "#ef4444"
+        
         else:
-            pick_bg = "rgba(148, 163, 184, 0.12)"
+            pick_bg = "rgba(148,163,184,0.12)"
             pick_border = "#94a3b8"
             pick_text_color = "#e5e7eb"
 
@@ -855,7 +859,7 @@ box-shadow:
     0 0 50px {hex_to_rgba(primary, 0.18)};
 ">
 
-<div class="model-title" style="color: {model_title_color};">
+<div class="model-title" style="color: #ffffff;">
     {selected_player}
 </div>
 <div class="model-subtitle">
