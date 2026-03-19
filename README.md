@@ -1,6 +1,6 @@
 <a href="https://nbaplayerperformanceprediction-7ajdpm4cmafadrmuczbvyf.streamlit.app/" target="_blank"><img src="https://static.streamlit.io/badges/streamlit_badge_black_white.svg"></a>
 
-# NBA Player Performance Prediction
+#     NBA Player Performance Prediction
 
 <p align="center">
   <img src="images/prop image.png" width="900"/>
