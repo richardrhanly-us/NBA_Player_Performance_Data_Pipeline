@@ -280,22 +280,25 @@ st.markdown("""
         color: white !important;
     }
 
-    .stNumberInput > div > div > input {
+    /* Base input */
+    .stNumberInput input {
         background-color: #111827 !important;
         color: #ffffff !important;
-        border-radius: 14px !important;
-        opacity: 1 !important;
         -webkit-text-fill-color: #ffffff !important;
+        opacity: 1 !important;
     }
     
-    .stNumberInput input::placeholder {
-        color: #9ca3af !important;
-    }
-
-    .stNumberInput button {
+    /* Disabled input (THIS is your issue) */
+    .stNumberInput input:disabled {
         background-color: #1f2937 !important;
-        color: white !important;
-        border: none !important;
+        color: #e5e7eb !important;
+        -webkit-text-fill-color: #e5e7eb !important;
+        opacity: 1 !important;
+    }
+    
+    /* Remove that washed-out look */
+    .stNumberInput input[disabled] {
+        opacity: 1 !important;
     }
 
     .stDataFrame {
