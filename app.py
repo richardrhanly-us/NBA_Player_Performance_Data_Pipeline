@@ -986,19 +986,19 @@ if selected_player:
     <div class="section-title">Recent Form</div>
     <div class="recent-grid">
         <div class="recent-box">
-            <div class="recent-label">Avg Points</div>
+            <div class="recent-label">Season Avg PPG</div>
             <div class="recent-value">{latest["player_avg_pts"]:.2f}</div>
         </div>
         <div class="recent-box">
-            <div class="recent-label">Last 5 Points</div>
+            <div class="recent-label">Last 5 Avg PTS</div>
             <div class="recent-value">{latest["last5_pts"]:.2f}</div>
         </div>
         <div class="recent-box">
-            <div class="recent-label">Last 5 Minutes</div>
+            <div class="recent-label">Last 5 Avg MIN</div>
             <div class="recent-value">{latest["last5_minutes"]:.2f}</div>
         </div>
         <div class="recent-box">
-            <div class="recent-label">Last 5 GmSc</div>
+            <div class="recent-label">Last 5 Avg GmSc</div>
             <div class="recent-value">{latest["last5_gmsc"]:.2f}</div>
         </div>
     </div>
