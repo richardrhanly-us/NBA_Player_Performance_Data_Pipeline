@@ -217,6 +217,16 @@ st.markdown("""
         border-radius: 12px;
         overflow: hidden;
     }
+
+        
+    .model-subtitle {
+        font-size: 0.75rem;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        opacity: 0.6;
+        margin-bottom: 8px;
+    }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -803,7 +813,10 @@ if selected_player:
         ">
         
         <div class="model-title" style="color: {model_title_color};">
-        Model Output • {team_abbr} Theme
+            {selected_player}
+        </div>
+        <div class="model-subtitle">
+            Model Output
         </div>
         
         <div class="model-main">
