@@ -14,7 +14,7 @@ from datetime import datetime
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
-APP_VERSION = "v1.23 - synced model features"
+APP_VERSION = "v1.23 - Updated model"
 
 
 st.set_page_config(
