@@ -14,7 +14,7 @@ from datetime import datetime
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
-APP_VERSION = "v1.21 - elevated model card layout"
+APP_VERSION = "v1.22 - debug"
 
 
 st.set_page_config(
@@ -800,9 +800,12 @@ if selected_player:
                 sportsbook_line = None
 
         default_line = sportsbook_line if sportsbook_line is not None else 20.5
-        
+
         col_line, col_toggle = st.columns([4, 1])
-        
+
+        with col_toggle:
+            manual_override = st.checkbox("Manual line", value=False)
+
         with col_line:
             line = st.number_input(
                 "Points line",
@@ -811,7 +814,6 @@ if selected_player:
                 step=0.5,
                 disabled=(sportsbook_line is not None and not manual_override)
             )
-        
 
         if sportsbook_line is not None and not manual_override:
             line = sportsbook_line
