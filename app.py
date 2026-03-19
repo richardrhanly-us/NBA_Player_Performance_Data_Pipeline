@@ -671,8 +671,7 @@ st.markdown(f"""
     <p class="hero-subtitle">Search a player, pull the latest line, and compare it to our model.</p>
     <div class="hero-pills">
         <div class="hero-pill">Live sportsbook lookup</div>
-        <div class="hero-pill">Model vs line edge</div>
-        <div class="hero-pill">Recent form snapshot</div>
+        <div class="hero-pill">Compare Model vs line edge</div>
         <div class="hero-pill">{APP_VERSION}</div>
     </div>
 </div>
