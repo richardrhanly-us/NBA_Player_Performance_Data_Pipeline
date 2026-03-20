@@ -491,19 +491,20 @@ def get_gsheet():
     ]
 
     creds = ServiceAccountCredentials.from_json_keyfile_name(
-        "credentials.json", scope
+        "credentials.json",
+        scope
     )
 
     client = gspread.authorize(creds)
-    sheet = client.open_by_key("YOUR_SHEET_ID").sheet1
-
+    sheet = client.open_by_key("1uhjV_Si-qcILfNJbKZrD52y4JnT_GvqQ0hzN7POekQM").sheet1
     return sheet
+
 
 try:
     sheet = get_gsheet()
     st.success("Google Sheets connected")
-        except Exception as e:
-        st.error(f"Google Sheets connection failed: {e}")
+except Exception as e:
+    st.error(f"Google Sheets connection failed: {e}")
 
 def append_to_sheet(player_name, game_date, line, sportsbook, last_update):
     try:
