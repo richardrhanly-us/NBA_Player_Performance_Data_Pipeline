@@ -1016,7 +1016,13 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-
+if st.button("Update Final Results"):
+    try:
+        updated_count, checked_count = update_all_pending_sheet_results()
+        st.success(f"Checked {checked_count} pending rows. Updated {updated_count} completed games.")
+    except Exception as e:
+        st.error(f"Batch update failed: {e}")
+        
 selected_search_name = st.selectbox(
     "Search Player",
     options=player_search_names,
