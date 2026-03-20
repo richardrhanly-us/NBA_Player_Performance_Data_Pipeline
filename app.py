@@ -52,7 +52,7 @@ def append_to_sheet(player_name, game_date, line, sportsbook, last_update, predi
         ""
     ])
 
-APP_VERSION = "v1.36 - Admin tools hidden"
+APP_VERSION = "v1.37 - fix upload button"
 
 
 st.set_page_config(
@@ -368,6 +368,41 @@ st.markdown("""
             font-size: 1.7rem;
         }
     }
+
+    div.stButton > button {
+        background: linear-gradient(135deg, #1e293b 0%, #111827 100%) !important;
+        color: #f8fafc !important;
+        -webkit-text-fill-color: #f8fafc !important;
+        border: 1px solid rgba(255,255,255,0.10) !important;
+        border-radius: 14px !important;
+        padding: 0.65rem 1.25rem !important;
+        font-weight: 700 !important;
+        font-size: 0.98rem !important;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.18) !important;
+        transition: all 0.2s ease !important;
+    }
+
+    div.stButton > button:hover {
+        background: linear-gradient(135deg, #243146 0%, #172033 100%) !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        border: 1px solid rgba(255,255,255,0.18) !important;
+    }
+
+    div.stButton > button:focus,
+    div.stButton > button:focus-visible {
+        outline: none !important;
+        box-shadow: 0 0 0 1px rgba(255,255,255,0.10), 0 0 0 3px rgba(124, 58, 237, 0.28) !important;
+    }
+
+    div.stButton > button:disabled {
+        background: linear-gradient(135deg, #1e293b 0%, #111827 100%) !important;
+        color: #f8fafc !important;
+        -webkit-text-fill-color: #f8fafc !important;
+        opacity: 1 !important;
+        border: 1px solid rgba(255,255,255,0.10) !important;
+    }
+    
 </style>
 """, unsafe_allow_html=True)
 
