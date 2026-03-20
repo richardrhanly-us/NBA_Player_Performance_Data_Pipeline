@@ -63,9 +63,6 @@ This is considered a solid baseline model for NBA points prediction using public
 
 ---
 
-## Web App (Streamlit)
-
-The project includes a fully functional web app built with Streamlit.
 
 ## Live Web App
 
