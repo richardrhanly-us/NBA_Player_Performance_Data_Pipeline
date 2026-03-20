@@ -24,7 +24,7 @@ The focus is on building a practical, data-driven workflow that combines:
 
 ## Project Overview
 
-The model predicts **player points** using historical performance data and rolling statistics.  
+The model predicts player points using historical performance data and rolling statistics.  
 It is designed to simulate how a bettor might evaluate over/under lines using recent trends and player role.
 
 The web application allows users to:
@@ -39,7 +39,7 @@ The web application allows users to:
 
 ### Features Used
 
-The current points model is built on a **focused, high-signal feature set**:
+The current points model is built on a focused, high-signal feature set:
 
 - player_avg_pts → long-term scoring baseline  
 - last5_pts → recent scoring trend  
