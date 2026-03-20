@@ -1038,7 +1038,7 @@ admin_mode = False
 with st.expander("Admin Tools", expanded=False):
     admin_key_input = st.text_input("Enter admin key", type="password", key="admin_key_input")
 
-    if admin_key_input == st.secrets["streamlitauthNBA!"]:
+    if admin_key_input == st.secrets["admin_key"]:
         admin_mode = True
         st.success("Admin mode enabled")
 
