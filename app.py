@@ -9,6 +9,7 @@ import pytz
 import unicodedata
 import gspread
 from nba_api.stats.endpoints import boxscoretraditionalv2
+from streamlit_autorefresh import st_autorefresh
 
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
@@ -21,6 +22,7 @@ from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv
 
 import gspread
 from google.oauth2.service_account import Credentials
+pip install streamlit-autorefresh
 
 # Google Sheets setup
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -880,17 +882,25 @@ if selected_player:
             game_time = today_game_info["time"]
             live_game_id = today_game_info.get("game_id")
 
-            live_markers = ["q1", "q2", "q3", "q4", "ot", "halftime"]
-            is_live_game = any(marker in str(game_time).lower() for marker in live_markers)
+            live_status_text = str(game_time).lower()
 
-            if is_live_game and live_game_id:
-                live_player_stats = get_live_player_stats(live_game_id, player_id)
-                if live_player_stats:
-                    live_points = live_player_stats["current_points"]
+            is_live_game = (
+                any(marker in live_status_text for marker in ["qtr", "quarter", "ot", "halftime", "half"])
+                and "final" not in live_status_text
+            )
 
-                _, live_minutes = get_live_game_stats(live_game_id, team_abbr)
+            if is_live_game:
+                game_status = "Live now"
+                st_autorefresh(interval=60000, key=f"live_refresh_{live_game_id}")
 
-            game_status = "Live now" if is_live_game else "Game today"
+                if live_game_id:
+                    live_player_stats = get_live_player_stats(live_game_id, player_id)
+                    if live_player_stats:
+                        live_points = live_player_stats["current_points"]
+
+                    _, live_minutes = get_live_game_stats(live_game_id, team_abbr)
+            else:
+                game_status = "Game today"
 
         else:
             next_game_info = None
