@@ -8,6 +8,7 @@ import streamlit as st
 import pytz
 import unicodedata
 import gspread
+from nba_api.stats.endpoints import boxscoretraditionalv2
 
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
@@ -44,7 +45,7 @@ def append_to_sheet(player_name, game_date, line, sportsbook, last_update):
         last_update
     ])
 
-APP_VERSION = "v1.32 - Fix pick banner"
+APP_VERSION = "v1.33 - Live Game Score"
 
 
 st.set_page_config(
@@ -202,7 +203,7 @@ st.markdown("""
 
     .model-main {
         display: grid;
-        grid-template-columns: 1.2fr 0.9fr 0.9fr 1fr;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
         gap: 14px;
     }
 
@@ -432,6 +433,23 @@ TEAM_THEMES = {
 def get_model_mtime():
     return os.path.getmtime("models/points_regression.pkl")
 
+def get_live_player_stats(game_id, player_id):
+    box = run_with_retry(
+        lambda: boxscoretraditionalv2.BoxScoreTraditionalV2(game_id=game_id)
+    )
+    player_stats = box.player_stats.get_data_frame()
+
+    row = player_stats[player_stats["PLAYER_ID"] == player_id]
+
+    if row.empty:
+        return None
+
+    row = row.iloc[0]
+
+    return {
+        "current_points": int(row["PTS"]),
+        "current_minutes": row["MIN"]
+    }
 
 @st.cache_resource
 def load_model(_mtime):
@@ -526,7 +544,34 @@ try:
     )
 except Exception:
     pass
-    
+
+def get_live_game_stats(game_id, team_abbr):
+    try:
+        scoreboard = scoreboardv2.ScoreboardV2()
+        line_score = scoreboard.line_score.get_data_frame()
+
+        if line_score.empty:
+            return None, None
+
+        game_rows = line_score[line_score["GAME_ID"].astype(str) == str(game_id)]
+
+        if game_rows.empty:
+            return None, None
+
+        team_row = game_rows[game_rows["TEAM_ABBREVIATION"] == team_abbr]
+
+        if team_row.empty:
+            return None, None
+
+        team_points = team_row.iloc[0]["PTS"]
+
+        game_status = game_rows.iloc[0]["GAME_STATUS_TEXT"]
+
+        return team_points, game_status
+
+    except Exception:
+        return None, None
+
 def hex_to_rgba(hex_color: str, alpha: float) -> str:
     hex_color = hex_color.lstrip("#")
     if len(hex_color) != 6:
@@ -624,6 +669,7 @@ def get_team_game_info(team_id, team_abbr, target_date_str):
     game_time = game["GAME_STATUS_TEXT"]
 
     return {
+        "game_id": game_id,
         "matchup": matchup_text,
         "date": game_date,
         "time": game_time
@@ -824,12 +870,28 @@ if selected_player:
 
         today_str = now_et.strftime("%m/%d/%Y")
         today_game_info = get_team_game_info(team_id, team_abbr, today_str)
-
+        
+        live_points = None
+        live_minutes = None
+        
         if today_game_info:
-            game_status = "Game today"
             matchup = today_game_info["matchup"]
             game_date = today_game_info["date"]
             game_time = today_game_info["time"]
+            live_game_id = today_game_info.get("game_id")
+
+            live_markers = ["q1", "q2", "q3", "q4", "ot", "halftime"]
+            is_live_game = any(marker in str(game_time).lower() for marker in live_markers)
+
+            if is_live_game and live_game_id:
+                live_player_stats = get_live_player_stats(live_game_id, player_id)
+                if live_player_stats:
+                    live_points = live_player_stats["current_points"]
+
+                _, live_minutes = get_live_game_stats(live_game_id, team_abbr)
+
+            game_status = "Live now" if is_live_game else "Game today"
+
         else:
             next_game_info = None
             for i in range(1, 8):
@@ -1119,21 +1181,38 @@ if selected_player:
                 f"{prob_under:.0%} for the under."
             )
         
-        model_html = "\n".join([
-            f'<div class="model-card" style="background: {model_bg}; border: 3px solid {model_border}; box-shadow: 0 0 0 1px {hex_to_rgba(secondary, 0.16)}, 0 0 28px {model_glow}, 0 0 50px {hex_to_rgba(primary, 0.18)};">',
-            f'<div class="model-title" style="color: #ffffff;">{selected_player}</div>',
-            f'<div class="model-subtitle">{"Next Scheduled Game Projection: " + game_date + " • " + game_time if game_status == "No game today" else "Model Output"}</div>',
-            '<div class="model-main">',
-            f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Predicted Points</div><div class="model-stat-value">{predicted_points:.2f}</div></div>',
-            f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Sportsbook Line</div><div class="model-stat-value">{f"{line:.1f}" if can_grade_edge else "No posted line"}</div></div>',
-            f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Model Edge</div><div class="model-stat-value">{f"{edge:+.2f}" if can_grade_edge else "N/A"}</div></div>',
-            f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Probability Split</div><div class="model-stat-value">{f"O {prob_over:.1%} / U {prob_under:.1%}" if can_grade_edge else "No posted line"}</div></div>',
-            '</div>',
-            f'<div class="prob-interpretation" style="margin-top: 14px; font-size: 0.98rem; color: #cbd5e1; display: {"block" if interpretation_text else "none"};">{interpretation_text}</div>',
-            f'<div style="width: 100%; margin-top: 14px;"><div class="pick-banner" style="background: {pick_bg}; color: {pick_text_color}; border: 2px solid {pick_border};">{pick_text}</div></div>',
-            f'<div class="small-note" style="margin-top: 10px;">{"" if not can_grade_edge else "Trained regression model output compared against the current sportsbook line."}</div>',
-            '</div>'
-        ])
+            model_cards = [
+                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Predicted Points</div><div class="model-stat-value">{predicted_points:.2f}</div></div>'
+            ]
+    
+            if live_points is not None:
+                model_cards.append(
+                    f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Live Points</div><div class="model-stat-value">{live_points}</div></div>'
+                )
+    
+            if live_minutes is not None:
+                model_cards.append(
+                    f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Game Status</div><div class="model-stat-value">{live_minutes}</div></div>'
+                )
+    
+            model_cards.extend([
+                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Sportsbook Line</div><div class="model-stat-value">{f"{line:.1f}" if can_grade_edge else "No posted line"}</div></div>',
+                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Model Edge</div><div class="model-stat-value">{f"{edge:+.2f}" if can_grade_edge else "N/A"}</div></div>',
+                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Probability Split</div><div class="model-stat-value">{f"O {prob_over:.1%} / U {prob_under:.1%}" if can_grade_edge else "No posted line"}</div></div>'
+            ])
+    
+            model_html = "\n".join([
+                f'<div class="model-card" style="background: {model_bg}; border: 3px solid {model_border}; box-shadow: 0 0 0 1px {hex_to_rgba(secondary, 0.16)}, 0 0 28px {model_glow}, 0 0 50px {hex_to_rgba(primary, 0.18)};">',
+                f'<div class="model-title" style="color: #ffffff;">{selected_player}</div>',
+                f'<div class="model-subtitle">{"Next Scheduled Game Projection: " + game_date + " • " + game_time if game_status == "No game today" else "Model Output"}</div>',
+                '<div class="model-main">',
+                "".join(model_cards),
+                '</div>',
+                f'<div class="prob-interpretation" style="margin-top: 14px; font-size: 0.98rem; color: #cbd5e1; display: {"block" if interpretation_text else "none"};">{interpretation_text}</div>',
+                f'<div style="width: 100%; margin-top: 14px;"><div class="pick-banner" style="background: {pick_bg}; color: {pick_text_color}; border: 2px solid {pick_border};">{pick_text}</div></div>',
+                f'<div class="small-note" style="margin-top: 10px;">{"" if not can_grade_edge else "Trained regression model output compared against the current sportsbook line."}</div>',
+                '</div>'
+            ])
         st.markdown(model_html, unsafe_allow_html=True)
 
         st.markdown(f"""
