@@ -14,7 +14,7 @@ from datetime import datetime
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
-APP_VERSION = "v1.27 - No Bet"
+APP_VERSION = "v1.28 - No Bet"
 
 
 st.set_page_config(
@@ -202,6 +202,9 @@ st.markdown("""
         font-weight: 900;
         text-align: center;
         letter-spacing: 0.05em;
+        width: 100%;
+        display: block;
+        box-sizing: border-box;
     }
 
     .small-note {
@@ -986,15 +989,7 @@ if selected_player:
             pick_text_color = "#e5e7eb"
         
         if not can_grade_edge:
-            if game_status == "No game today":
-                interpretation_text = (
-                    f"The model projects {predicted_points:.2f} points for the next scheduled game, "
-                    f"but no sportsbook line is posted yet."
-                )
-            else:
-                interpretation_text = (
-                    f"The model projects {predicted_points:.2f} points, but no sportsbook line is posted yet."
-                )
+            interpretation_text = ""
         elif abs(edge) < 1.5:
             interpretation_text = (
                 f"The model projects {predicted_points:.2f} points against a line of {line:.1f}, "
@@ -1005,20 +1000,20 @@ if selected_player:
                 f"The model projects a {prob_over:.0%} chance of the over hitting compared to "
                 f"{prob_under:.0%} for the under."
             )
-
+        
 
         model_html = "\n".join([
             f'<div class="model-card" style="background: {model_bg}; border: 3px solid {model_border}; box-shadow: 0 0 0 1px {hex_to_rgba(secondary, 0.16)}, 0 0 28px {model_glow}, 0 0 50px {hex_to_rgba(primary, 0.18)};">',
             f'<div class="model-title" style="color: #ffffff;">{selected_player}</div>',
-            f'<div class="model-subtitle">{"Next Scheduled Game Projection" if game_status == "No game today" else "Model Output"}</div>',
+            f'<div class="model-subtitle">{"Next Scheduled Game Projection: " + game_date + " • " + game_time if game_status == "No game today" else "Model Output"}</div>',
             '<div class="model-main">',
             f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Predicted Points</div><div class="model-stat-value">{predicted_points:.2f}</div></div>',
             f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Sportsbook Line</div><div class="model-stat-value">{f"{line:.1f}" if can_grade_edge else "No posted line"}</div></div>',
             f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Model Edge</div><div class="model-stat-value">{f"{edge:+.2f}" if can_grade_edge else "N/A"}</div></div>',
             f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Probability Split</div><div class="model-stat-value">{f"O {prob_over:.1%} / U {prob_under:.1%}" if can_grade_edge else "No posted line"}</div></div>',
-            f'<div class="prob-interpretation" style="margin-top: 8px; margin-bottom: 10px; padding: 8px 2px 0 2px; font-size: 0.98rem; color: #cbd5e1; opacity: 0.95;">{interpretation_text}</div>',
+            f'<div class="prob-interpretation" style="margin-top: 8px; margin-bottom: 10px; padding: 8px 2px 0 2px; font-size: 0.98rem; color: #cbd5e1; opacity: 0.95; display: {"block" if interpretation_text else "none"};">{interpretation_text}</div>',
             f'<div class="pick-banner" style="background: {pick_bg}; color: {pick_text_color}; border: 2px solid {pick_border};">{pick_text}</div>',
-            '<div class="small-note">Trained regression model output compared against the current sportsbook line.</div>',
+            f'<div class="small-note">{"Projection shown without a posted sportsbook line." if not can_grade_edge else "Trained regression model output compared against the current sportsbook line."}</div>',
             '</div>'
         ])
         st.markdown(model_html, unsafe_allow_html=True)
