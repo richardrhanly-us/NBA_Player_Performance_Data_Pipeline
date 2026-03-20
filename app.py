@@ -52,7 +52,7 @@ def append_to_sheet(player_name, game_date, line, sportsbook, last_update, predi
         ""
     ])
 
-APP_VERSION = "v1.35 - Sheet update"
+APP_VERSION = "v1.36 - Admin tools hidden"
 
 
 st.set_page_config(
@@ -336,6 +336,19 @@ st.markdown("""
         color: white !important;
     }
 
+    div[data-testid="stTextInput"] input[type="password"] {
+        background-color: #111827 !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        border: 1px solid rgba(255,255,255,0.10) !important;
+        border-radius: 12px !important;
+    }
+
+    div[data-testid="stTextInput"] label {
+        color: #e5e7eb !important;
+        font-weight: 600 !important;
+    }
+
     @media (max-width: 900px) {
         .summary-strip,
         .recent-grid,
@@ -358,44 +371,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-<style>
-
-/* Fix Streamlit button styling */
-div.stButton > button {
-    background: linear-gradient(135deg, #1e293b 0%, #111827 100%);
-    color: #f8fafc;
-    border: 2px solid #7c3aed;
-    border-radius: 12px;
-    padding: 0.6rem 1.4rem;
-    font-weight: 600;
-    font-size: 0.95rem;
-    transition: all 0.25s ease;
-}
-
-/* Hover effect */
-div.stButton > button:hover {
-    background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
-    border-color: #a78bfa;
-    box-shadow: 0 0 18px rgba(124, 58, 237, 0.5);
-    transform: translateY(-1px);
-}
-
-/* Active click */
-div.stButton > button:active {
-    transform: scale(0.98);
-}
-
-/* Disabled (important for your case) */
-div.stButton > button:disabled {
-    background: #1f2937;
-    color: #6b7280;
-    border-color: #374151;
-    cursor: not-allowed;
-}
-
-</style>
-""", unsafe_allow_html=True)
 
 CURRENT_SEASON = "2025-26"
 
@@ -637,6 +612,76 @@ def get_final_points_from_gamelog(player_id, game_date):
 
     return int(match.iloc[0]["PTS"])
 
+
+def update_sheet_with_final_result(
+    player_name,
+    game_date,
+    sportsbook,
+    predicted_points,
+    final_points
+):
+    records_df, sheet = get_sheet_records_df()
+
+    if records_df.empty:
+        return False
+
+    required_cols = [
+        "PLAYER_NAME", "GAME_DATE", "sportsbook", "sportsbook_line",
+        "predicted_points", "final_points", "line_result",
+        "model_pick", "model_result", "result_logged_at"
+    ]
+
+    for col in required_cols:
+        if col not in records_df.columns:
+            return False
+
+    target_idx = None
+
+    for idx, row in records_df.iterrows():
+        row_player = str(row["PLAYER_NAME"]).strip()
+        row_date = normalize_sheet_date(row["GAME_DATE"])
+        row_book = str(row["sportsbook"]).strip()
+        row_final_points = str(row["final_points"]).strip()
+
+        if (
+            row_player == player_name
+            and row_date == game_date
+            and row_book == sportsbook
+        ):
+            if row_final_points:
+                return True
+            target_idx = idx
+            break
+
+    if target_idx is None:
+        return False
+
+    row = records_df.iloc[target_idx]
+    line_val = safe_float(row["sportsbook_line"])
+
+    if line_val is None:
+        return False
+
+    model_pick = "OVER" if predicted_points > line_val else "UNDER"
+    line_result = "OVER" if final_points > line_val else "UNDER"
+    model_result = "WIN" if model_pick == line_result else "LOSS"
+    logged_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    sheet_row_num = target_idx + 2
+
+    headers = list(records_df.columns)
+    col_map = {name: i + 1 for i, name in enumerate(headers)}
+
+    sheet.update_cell(sheet_row_num, col_map["predicted_points"], f"{predicted_points:.2f}")
+    sheet.update_cell(sheet_row_num, col_map["final_points"], str(final_points))
+    sheet.update_cell(sheet_row_num, col_map["line_result"], line_result)
+    sheet.update_cell(sheet_row_num, col_map["model_pick"], model_pick)
+    sheet.update_cell(sheet_row_num, col_map["model_result"], model_result)
+    sheet.update_cell(sheet_row_num, col_map["result_logged_at"], logged_at)
+
+    return True
+
+
 def get_player_id_by_name(player_name):
     try:
         return player_name_map.get(player_name)
@@ -712,73 +757,7 @@ def update_all_pending_sheet_results():
             print(f"Batch update failed for {player_name}: {e}")
 
     return updated_count, checked_count
-def update_sheet_with_final_result(
-    player_name,
-    game_date,
-    sportsbook,
-    predicted_points,
-    final_points
-):
-    records_df, sheet = get_sheet_records_df()
 
-    if records_df.empty:
-        return False
-
-    required_cols = [
-        "PLAYER_NAME", "GAME_DATE", "sportsbook", "sportsbook_line",
-        "predicted_points", "final_points", "line_result",
-        "model_pick", "model_result", "result_logged_at"
-    ]
-
-    for col in required_cols:
-        if col not in records_df.columns:
-            return False
-
-    target_idx = None
-
-    for idx, row in records_df.iterrows():
-        row_player = str(row["PLAYER_NAME"]).strip()
-        row_date = normalize_sheet_date(row["GAME_DATE"])
-        row_book = str(row["sportsbook"]).strip()
-        row_final_points = str(row["final_points"]).strip()
-
-        if (
-            row_player == player_name
-            and row_date == game_date
-            and row_book == sportsbook
-        ):
-            if row_final_points:
-                return True
-            target_idx = idx
-            break
-
-    if target_idx is None:
-        return False
-
-    row = records_df.iloc[target_idx]
-    line_val = safe_float(row["sportsbook_line"])
-
-    if line_val is None:
-        return False
-
-    model_pick = "OVER" if predicted_points > line_val else "UNDER"
-    line_result = "OVER" if final_points > line_val else "UNDER"
-    model_result = "WIN" if model_pick == line_result else "LOSS"
-    logged_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-
-    sheet_row_num = target_idx + 2
-
-    headers = list(records_df.columns)
-    col_map = {name: i + 1 for i, name in enumerate(headers)}
-
-    sheet.update_cell(sheet_row_num, col_map["predicted_points"], f"{predicted_points:.2f}")
-    sheet.update_cell(sheet_row_num, col_map["final_points"], str(final_points))
-    sheet.update_cell(sheet_row_num, col_map["line_result"], line_result)
-    sheet.update_cell(sheet_row_num, col_map["model_pick"], model_pick)
-    sheet.update_cell(sheet_row_num, col_map["model_result"], model_result)
-    sheet.update_cell(sheet_row_num, col_map["result_logged_at"], logged_at)
-
-    return True
 
 def get_live_game_stats(game_id, team_abbr):
     try:
@@ -1054,13 +1033,25 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-if st.button("Update Final Results"):
-    try:
-        updated_count, checked_count = update_all_pending_sheet_results()
-        st.success(f"Checked {checked_count} pending rows. Updated {updated_count} completed games.")
-    except Exception as e:
-        st.error(f"Batch update failed: {e}")
-        
+admin_mode = False
+
+with st.expander("Admin Tools", expanded=False):
+    admin_key_input = st.text_input("Enter admin key", type="password", key="admin_key_input")
+
+    if admin_key_input == st.secrets["admin_key"]:
+        admin_mode = True
+        st.success("Admin mode enabled")
+
+    elif admin_key_input:
+        st.error("Invalid admin key")
+
+    if admin_mode and st.button("Update Final Results"):
+        try:
+            updated_count, checked_count = update_all_pending_sheet_results()
+            st.success(f"Checked {checked_count} pending rows. Updated {updated_count} completed games.")
+        except Exception as e:
+            st.error(f"Batch update failed: {e}")
+
 selected_search_name = st.selectbox(
     "Search Player",
     options=player_search_names,
