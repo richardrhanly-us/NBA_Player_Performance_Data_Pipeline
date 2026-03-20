@@ -14,7 +14,7 @@ from datetime import datetime
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
-APP_VERSION = "v1.3 - Fix pick banner"
+APP_VERSION = "v1.31 - Fix pick banner"
 
 
 st.set_page_config(
@@ -1001,7 +1001,6 @@ if selected_player:
                 f"{prob_under:.0%} for the under."
             )
         
-
         model_html = "\n".join([
             f'<div class="model-card" style="background: {model_bg}; border: 3px solid {model_border}; box-shadow: 0 0 0 1px {hex_to_rgba(secondary, 0.16)}, 0 0 28px {model_glow}, 0 0 50px {hex_to_rgba(primary, 0.18)};">',
             f'<div class="model-title" style="color: #ffffff;">{selected_player}</div>',
@@ -1011,15 +1010,10 @@ if selected_player:
             f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Sportsbook Line</div><div class="model-stat-value">{f"{line:.1f}" if can_grade_edge else "No posted line"}</div></div>',
             f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Model Edge</div><div class="model-stat-value">{f"{edge:+.2f}" if can_grade_edge else "N/A"}</div></div>',
             f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Probability Split</div><div class="model-stat-value">{f"O {prob_over:.1%} / U {prob_under:.1%}" if can_grade_edge else "No posted line"}</div></div>',
-            f'<div class="prob-interpretation" style="margin-top: 8px; margin-bottom: 10px; padding: 8px 2px 0 2px; font-size: 0.98rem; color: #cbd5e1; opacity: 0.95; display: {"block" if interpretation_text else "none"};">{interpretation_text}</div>',
-            
-            f'<div style="display: block; width: 100%;">'
-            f'  <div class="pick-banner" style="width: 100%; background: {pick_bg}; color: {pick_text_color}; border: 2px solid {pick_border};">'
-            f'    {pick_text}'
-            f'  </div>'
-            f'</div>',
-            
-            f'<div class="small-note">{"Projection shown without a posted sportsbook line." if not can_grade_edge else "Trained regression model output compared against the current sportsbook line."}</div>',
+            '</div>',
+            f'<div class="prob-interpretation" style="margin-top: 14px; font-size: 0.98rem; color: #cbd5e1; display: {"block" if interpretation_text else "none"};">{interpretation_text}</div>',
+            f'<div style="width: 100%; margin-top: 14px;"><div class="pick-banner" style="background: {pick_bg}; color: {pick_text_color}; border: 2px solid {pick_border};">{pick_text}</div></div>',
+            f'<div class="small-note" style="margin-top: 10px;">{"Projection shown without a posted sportsbook line." if not can_grade_edge else "Trained regression model output compared against the current sportsbook line."}</div>',
             '</div>'
         ])
         st.markdown(model_html, unsafe_allow_html=True)
