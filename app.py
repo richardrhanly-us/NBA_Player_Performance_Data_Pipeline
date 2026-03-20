@@ -791,11 +791,21 @@ if selected_player:
                 step=0.5,
                 disabled=(sportsbook_line is not None and not manual_override)
             )
-
+        
         if sportsbook_line is not None and not manual_override:
             line = sportsbook_line
-        elif sportsbook_line is None:
-            line_source = "Manual fallback"
+            line_source = "Sportsbook API"
+        
+        elif manual_override:
+            line_source = "Manual line"
+        
+        else:
+            line = None
+            line_source = "No posted line"
+        
+        has_real_line = sportsbook_line is not None
+        using_manual_line = manual_override
+        can_grade_edge = has_real_line or using_manual_line
 
         df = get_player_gamelog_df(player_id, CURRENT_SEASON)
 
@@ -949,11 +959,18 @@ if selected_player:
             X = X.reindex(columns=model.feature_names_in_, fill_value=0)
 
         predicted_points = float(model.predict(X)[0])
-        edge = predicted_points - line
-
-        prob_over = 1 - norm.cdf(line, loc=predicted_points, scale=points_std)
-        prob_under = 1 - prob_over
-        pick_text, pick_kind = get_pick_label(edge)
+        
+        if can_grade_edge:
+            edge = predicted_points - line
+            prob_over = 1 - norm.cdf(line, loc=predicted_points, scale=points_std)
+            prob_under = 1 - prob_over
+            pick_text, pick_kind = get_pick_label(edge)
+        else:
+            edge = None
+            prob_over = None
+            prob_under = None
+            pick_text = "No Posted Line"
+            pick_kind = "neutral"
 
         if pick_kind == "over":
             pick_bg = "rgba(34,197,94,0.25)"
@@ -967,8 +984,18 @@ if selected_player:
             pick_bg = "rgba(148,163,184,0.12)"
             pick_border = "#94a3b8"
             pick_text_color = "#e5e7eb"
-
-        if abs(edge) < 1.5:
+        
+        if not can_grade_edge:
+            if game_status == "No game today":
+                interpretation_text = (
+                    f"The model projects {predicted_points:.2f} points for the next scheduled game, "
+                    f"but no sportsbook line is posted yet."
+                )
+            else:
+                interpretation_text = (
+                    f"The model projects {predicted_points:.2f} points, but no sportsbook line is posted yet."
+                )
+        elif abs(edge) < 1.5:
             interpretation_text = (
                 f"The model projects {predicted_points:.2f} points against a line of {line:.1f}, "
                 f"which is too close to call confidently."
@@ -979,16 +1006,16 @@ if selected_player:
                 f"{prob_under:.0%} for the under."
             )
 
+
         model_html = "\n".join([
             f'<div class="model-card" style="background: {model_bg}; border: 3px solid {model_border}; box-shadow: 0 0 0 1px {hex_to_rgba(secondary, 0.16)}, 0 0 28px {model_glow}, 0 0 50px {hex_to_rgba(primary, 0.18)};">',
             f'<div class="model-title" style="color: #ffffff;">{selected_player}</div>',
-            '<div class="model-subtitle">Model Output</div>',
+            f'<div class="model-subtitle">{"Next Scheduled Game Projection" if game_status == "No game today" else "Model Output"}</div>',
             '<div class="model-main">',
             f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Predicted Points</div><div class="model-stat-value">{predicted_points:.2f}</div></div>',
-            f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Sportsbook Line</div><div class="model-stat-value">{line:.1f}</div></div>',
-            f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Model Edge</div><div class="model-stat-value">{edge:+.2f}</div></div>',
-            f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Probability Split</div><div class="model-stat-value">O {prob_over:.1%} / U {prob_under:.1%}</div></div>',
-            '</div>',
+            f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Sportsbook Line</div><div class="model-stat-value">{f"{line:.1f}" if can_grade_edge else "No posted line"}</div></div>',
+            f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Model Edge</div><div class="model-stat-value">{f"{edge:+.2f}" if can_grade_edge else "N/A"}</div></div>',
+            f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Probability Split</div><div class="model-stat-value">{f"O {prob_over:.1%} / U {prob_under:.1%}" if can_grade_edge else "No posted line"}</div></div>',
             f'<div class="prob-interpretation" style="margin-top: 8px; margin-bottom: 10px; padding: 8px 2px 0 2px; font-size: 0.98rem; color: #cbd5e1; opacity: 0.95;">{interpretation_text}</div>',
             f'<div class="pick-banner" style="background: {pick_bg}; color: {pick_text_color}; border: 2px solid {pick_border};">{pick_text}</div>',
             '<div class="small-note">Trained regression model output compared against the current sportsbook line.</div>',
@@ -1028,7 +1055,7 @@ if selected_player:
         elif matchup != "N/A" and not game_available_in_feed:
             sportsbook_message = "This game is not yet available in the sportsbook events feed. Using manual fallback."
         elif sportsbook_line is None:
-            sportsbook_message = "Game found, but no player points line was posted for this player/book yet. Using manual fallback."
+            sportsbook_message = "Game found, but no player points line is posted for this player/book yet."
 
         st.markdown(f"""
 <div class="section-card">
@@ -1044,7 +1071,7 @@ if selected_player:
         </div>
         <div class="summary-item">
             <div class="summary-label">Line</div>
-            <div class="summary-value">{line:.1f}</div>
+            <div class="summary-value">{f"{line:.1f}" if line is not None else "N/A"}</div>
         </div>
         <div class="summary-item">
             <div class="summary-label">Prices</div>
