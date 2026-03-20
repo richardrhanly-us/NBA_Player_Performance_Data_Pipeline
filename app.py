@@ -22,7 +22,7 @@ from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv
 
 import gspread
 from google.oauth2.service_account import Credentials
-pip install streamlit-autorefresh
+
 
 # Google Sheets setup
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
