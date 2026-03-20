@@ -358,6 +358,44 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+
+/* Fix Streamlit button styling */
+div.stButton > button {
+    background: linear-gradient(135deg, #1e293b 0%, #111827 100%);
+    color: #f8fafc;
+    border: 2px solid #7c3aed;
+    border-radius: 12px;
+    padding: 0.6rem 1.4rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: all 0.25s ease;
+}
+
+/* Hover effect */
+div.stButton > button:hover {
+    background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+    border-color: #a78bfa;
+    box-shadow: 0 0 18px rgba(124, 58, 237, 0.5);
+    transform: translateY(-1px);
+}
+
+/* Active click */
+div.stButton > button:active {
+    transform: scale(0.98);
+}
+
+/* Disabled (important for your case) */
+div.stButton > button:disabled {
+    background: #1f2937;
+    color: #6b7280;
+    border-color: #374151;
+    cursor: not-allowed;
+}
+
+</style>
+""", unsafe_allow_html=True)
 
 CURRENT_SEASON = "2025-26"
 
