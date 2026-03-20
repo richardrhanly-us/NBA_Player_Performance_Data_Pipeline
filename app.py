@@ -7,6 +7,10 @@ import pandas as pd
 import streamlit as st
 import pytz
 import unicodedata
+import gspread
+
+from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
 
 from scipy.stats import norm
 from datetime import datetime
@@ -454,6 +458,36 @@ def load_active_players():
     return active_players, actual_name_to_id, search_name_to_actual, search_names
 
 
+def get_gsheet():
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
+    creds = ServiceAccountCredentials.from_json_keyfile_name(
+        "credentials.json", scope
+    )
+
+    client = gspread.authorize(creds)
+    sheet = client.open_by_key("YOUR_SHEET_ID").sheet1
+
+    return sheet
+
+def append_to_sheet(player_name, game_date, line, sportsbook, last_update):
+    try:
+        sheet = get_gsheet()
+
+        sheet.append_row([
+            player_name,
+            str(game_date),
+            float(line),
+            sportsbook,
+            last_update if last_update else ""
+        ])
+
+    except Exception as e:
+        print("Sheet write failed:", e)
+
 def hex_to_rgba(hex_color: str, alpha: float) -> str:
     hex_color = hex_color.lstrip("#")
     if len(hex_color) != 6:
@@ -801,7 +835,6 @@ if selected_player:
                     )
 
                     prop = extract_player_prop(event_odds, selected_player)
-
                     if prop:
                         sportsbook_line = prop["line"]
                         over_price = prop["over_price"]
@@ -809,17 +842,18 @@ if selected_player:
                         book_name = prop["bookmaker"]
                         book_updated = prop["last_update"]
                         line_source = "Sportsbook API"
-
+                    
                         try:
-                            append_sportsbook_line(
+                            append_to_sheet(
                                 player_name=selected_player,
                                 game_date=game_date,
-                                sportsbook_line=sportsbook_line,
+                                line=sportsbook_line,
                                 sportsbook=book_name,
                                 last_update=book_updated
                             )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            print("Sheet write failed:", e)
+                        
 
             except Exception:
                 sportsbook_line = None
