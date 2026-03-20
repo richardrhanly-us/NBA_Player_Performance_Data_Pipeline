@@ -94,3 +94,6 @@ The app connects to the NBA API in real time to:
 Predictions are converted into probabilities using the model’s error distribution, allowing for more realistic betting-style analysis.
 
 ### Example Output
+<p align="center">
+  <img src="images/Appimg2.JPG" width="900"/>
+</p>
