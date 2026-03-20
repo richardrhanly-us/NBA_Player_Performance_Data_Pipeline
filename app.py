@@ -499,9 +499,9 @@ def get_gsheet():
 
     return sheet
 
-    try:
-    sheet = get_gsheet()
-    st.success("Google Sheets connected")
+try:
+sheet = get_gsheet()
+st.success("Google Sheets connected")
 except Exception as e:
     st.error(f"Google Sheets connection failed: {e}")
 
