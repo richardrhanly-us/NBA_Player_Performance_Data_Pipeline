@@ -1013,8 +1013,8 @@ if selected_player:
             f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Probability Split</div><div class="model-stat-value">{f"O {prob_over:.1%} / U {prob_under:.1%}" if can_grade_edge else "No posted line"}</div></div>',
             f'<div class="prob-interpretation" style="margin-top: 8px; margin-bottom: 10px; padding: 8px 2px 0 2px; font-size: 0.98rem; color: #cbd5e1; opacity: 0.95; display: {"block" if interpretation_text else "none"};">{interpretation_text}</div>',
             
-            f'<div style="margin-top: 14px;">'
-            f'  <div class="pick-banner" style="background: {pick_bg}; color: {pick_text_color}; border: 2px solid {pick_border}; width: 100%;">'
+            f'<div style="display: block; width: 100%;">'
+            f'  <div class="pick-banner" style="width: 100%; background: {pick_bg}; color: {pick_text_color}; border: 2px solid {pick_border};">'
             f'    {pick_text}'
             f'  </div>'
             f'</div>',
