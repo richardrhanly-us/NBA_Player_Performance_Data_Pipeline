@@ -1013,7 +1013,7 @@ if selected_player:
             '</div>',
             f'<div class="prob-interpretation" style="margin-top: 14px; font-size: 0.98rem; color: #cbd5e1; display: {"block" if interpretation_text else "none"};">{interpretation_text}</div>',
             f'<div style="width: 100%; margin-top: 14px;"><div class="pick-banner" style="background: {pick_bg}; color: {pick_text_color}; border: 2px solid {pick_border};">{pick_text}</div></div>',
-            f'<div class="small-note" style="margin-top: 10px;">{"Projection shown without a posted sportsbook line." if not can_grade_edge else "Trained regression model output compared against the current sportsbook line."}</div>',
+            f'<div class="small-note" style="margin-top: 10px;">{"" if not can_grade_edge else "Trained regression model output compared against the current sportsbook line."}</div>',
             '</div>'
         ])
         st.markdown(model_html, unsafe_allow_html=True)
