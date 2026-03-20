@@ -18,6 +18,32 @@ from datetime import datetime
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
+import gspread
+from google.oauth2.service_account import Credentials
+
+# Google Sheets setup
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+
+@st.cache_resource
+def get_gsheet():
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=SCOPES
+    )
+    client = gspread.authorize(creds)
+    sheet = client.open("sportsbook_lines").sheet1
+    return sheet
+
+def append_to_sheet(player_name, game_date, line, sportsbook, last_update):
+    sheet = get_gsheet()
+    sheet.append_row([
+        player_name,
+        game_date,
+        line,
+        sportsbook,
+        last_update
+    ])
+
 APP_VERSION = "v1.32 - Fix pick banner"
 
 
@@ -472,6 +498,12 @@ def get_gsheet():
     sheet = client.open_by_key("YOUR_SHEET_ID").sheet1
 
     return sheet
+
+    try:
+    sheet = get_gsheet()
+    st.success("Google Sheets connected")
+except Exception as e:
+    st.error(f"Google Sheets connection failed: {e}")
 
 def append_to_sheet(player_name, game_date, line, sportsbook, last_update):
     try:
