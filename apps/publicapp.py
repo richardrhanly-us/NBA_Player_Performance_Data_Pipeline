@@ -689,6 +689,7 @@ if selected_player and selected_book:
         player_lines = get_player_points_lines(selected_player, selected_book)
         if player_lines:
             live_line = player_lines.get("points_line")
+            st.caption(f"DEBUG: player_lines = {player_lines}")
     except Exception as e:
         st.warning(f"Could not load sportsbook line: {e}")
 
@@ -706,8 +707,8 @@ sportsbook_line = st.number_input(
 if live_line is not None:
     st.caption(f"Loaded {selected_book} line: {float(live_line):.1f}")
 else:
-    st.caption("No live sportsbook line found. Using manual input.")
-
+    st.caption(f"No live sportsbook line found for {selected_player} at {selected_book}. Using manual input.")
+    
 if selected_player:
     with st.spinner("Building projection..."):
         result = build_prediction(selected_player, float(sportsbook_line))
