@@ -988,7 +988,7 @@ def update_all_pending_sheet_results():
             )
 
             updated_count += 1
-            time.sleep(1)A
+            time.sleep(1)
 
         except Exception as e:
             st.error(f"Google Sheets logging failed: {e}")
