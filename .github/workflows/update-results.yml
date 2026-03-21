@@ -20,7 +20,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pandas gspread google-auth nba_api
+          pip install pandas gspread google-auth nba_api requests joblib scipy
+
+      - name: Load top plays
+        env:
+          GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: |
+          python scripts/load_top_plays.py
 
       - name: Run updater
         env:
