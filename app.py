@@ -42,7 +42,9 @@ def get_live_player_stats(game_id, player_id, player_name):
         df = box.player_stats.get_data_frame().copy()
 
         if df.empty:
-            return None
+            return None, "box score came back empty"
+
+        debug_cols = [c for c in ["PLAYER_ID", "PLAYER_NAME", "PTS", "FGM", "FGA", "MIN"] if c in df.columns]
 
         if "PLAYER_ID" in df.columns:
             df["PLAYER_ID"] = pd.to_numeric(df["PLAYER_ID"], errors="coerce")
@@ -53,11 +55,13 @@ def get_live_player_stats(game_id, player_id, player_name):
             row = df[df["PLAYER_ID"] == int(player_id)]
 
         if row.empty and "PLAYER_NAME" in df.columns:
-            row = df[df["PLAYER_NAME"].astype(str).str.lower() == str(player_name).lower()]
+            row = df[df["PLAYER_NAME"].astype(str).str.strip().str.lower() == player_name.strip().lower()]
 
         if row.empty:
-            st.warning(f"Live box score found, but no row matched for {player_name}.")
-            return None
+            sample_names = []
+            if "PLAYER_NAME" in df.columns:
+                sample_names = df["PLAYER_NAME"].astype(str).tolist()[:15]
+            return None, f"no player row match | game_id={game_id} | player_id={player_id} | names={sample_names}"
 
         row = row.iloc[0]
 
@@ -71,11 +75,10 @@ def get_live_player_stats(game_id, player_id, player_name):
             "fgm": int(fgm) if pd.notna(fgm) else 0,
             "fga": int(fga) if pd.notna(fga) else 0,
             "minutes": str(minutes)
-        }
+        }, None
 
     except Exception as e:
-        st.error(f"Live stat error: {e}")
-        return None
+        return None, f"{type(e).__name__}: {e}"
 
 
 @st.cache_resource
@@ -1186,12 +1189,16 @@ if selected_player:
                 st_autorefresh(interval=10000, key=f"live_refresh_{live_game_id}")
 
                 if live_game_id:
-                    live_player_stats = get_live_player_stats(live_game_id, player_id, selected_player)
-                    if live_player_stats:
-                        live_points = live_player_stats["pts"]
-                        live_fgm = live_player_stats["fgm"]
-                        live_fga = live_player_stats["fga"]
-                        live_minutes = live_player_stats["minutes"]
+                live_player_stats, live_debug = get_live_player_stats(live_game_id, player_id, selected_player)
+                
+                if live_player_stats:
+                    live_points = live_player_stats["pts"]
+                    live_fgm = live_player_stats["fgm"]
+                    live_fga = live_player_stats["fga"]
+                    live_minutes = live_player_stats["minutes"]
+                else:
+                    st.warning(f"Live stats debug: {live_debug}")
+            st.caption(f"Debug game id: {live_game_id} | player id: {player_id} | player: {selected_player}")
 
 
             elif is_final_game:
