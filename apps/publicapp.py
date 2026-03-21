@@ -659,7 +659,6 @@ st.markdown("</div>", unsafe_allow_html=True)
 st.markdown('<div class="section-card"><div class="section-title">Player Projection</div>', unsafe_allow_html=True)
 
 actual_name_to_id, player_names = get_player_lookup()
-
 selected_player = st.selectbox(
     "Search for a player",
     options=player_names,
@@ -667,7 +666,6 @@ selected_player = st.selectbox(
     placeholder="Start typing a player name..."
 )
 
-# --- NEW: Sportsbook selector ---
 sportsbooks = get_available_sportsbooks()
 
 selected_book = st.selectbox(
@@ -677,8 +675,8 @@ selected_book = st.selectbox(
     placeholder="Choose a sportsbook..."
 )
 
-# ---  Pull live line ---
 live_line = None
+player_lines = None
 
 if selected_player and selected_book:
     try:
@@ -689,6 +687,19 @@ if selected_player and selected_book:
 
     except Exception as e:
         st.warning(f"Could not load sportsbook line: {e}")
+
+if live_line is not None:
+    sportsbook_line = float(live_line)
+    st.caption(f"Loaded {selected_book} line: {sportsbook_line}")
+else:
+    sportsbook_line = st.number_input(
+        "Sportsbook points line",
+        min_value=0.0,
+        max_value=80.0,
+        value=25.5,
+        step=0.5
+    )
+    st.caption("No live sportsbook line found. Using manual input.")
 
 # --- Use live line if available ---
 default_line = float(live_line) if live_line is not None else 25.5
