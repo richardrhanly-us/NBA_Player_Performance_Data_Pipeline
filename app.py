@@ -197,8 +197,6 @@ st.markdown("""
         color: #f8fafc;
     }
 
-   
-
     .summary-strip {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
