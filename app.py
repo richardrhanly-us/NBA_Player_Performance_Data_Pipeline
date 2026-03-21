@@ -23,8 +23,122 @@ from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv
 import gspread
 from google.oauth2.service_account import Credentials
 
+from nba_api.stats.endpoints import (
+    playergamelog,
+    commonplayerinfo,
+    scoreboardv2,
+    boxscoretraditionalv2
+)
+
 # Google Sheets setup
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+
+@st.cache_data(ttl=20)
+def get_live_player_stats(game_id, player_id):
+    try:
+        box = run_with_retry(
+            lambda: boxscoretraditionalv2.BoxScoreTraditionalV2(game_id=game_id)
+        )
+        player_stats_df = box.player_stats.get_data_frame()
+
+        row = player_stats_df[player_stats_df["PLAYER_ID"] == player_id]
+
+        if row.empty:
+            return {
+                "pts": 0,
+                "fgm": 0,
+                "fga": 0,
+                "minutes": "0"
+            }
+
+        row = row.iloc[0]
+
+        return {
+            "pts": int(row["PTS"]),
+            "fgm": int(row["FGM"]),
+            "fga": int(row["FGA"]),
+            "minutes": str(row["MIN"])
+        }
+
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=20)
+def get_live_player_stats(player_id):
+    try:
+        today = datetime.now().strftime("%m/%d/%Y")
+        team_info = get_player_team_info(player_id)
+        team_id = team_info["team_id"]
+
+        board = scoreboardv2.ScoreboardV2(game_date=today)
+        game_header_df = board.game_header.get_data_frame()
+        line_score_df = board.line_score.get_data_frame()
+
+        # Find today's game for the player's team
+        team_game_rows = line_score_df[line_score_df["TEAM_ID"] == team_id]
+        if team_game_rows.empty:
+            return None
+
+        game_id = team_game_rows.iloc[0]["GAME_ID"]
+
+        header_row = game_header_df[game_header_df["GAME_ID"] == game_id]
+        if header_row.empty:
+            return None
+
+        header_row = header_row.iloc[0]
+        game_status_id = int(header_row["GAME_STATUS_ID"])
+        game_status_text = str(header_row["GAME_STATUS_TEXT"])
+
+        # 1 = scheduled, 2 = live, 3 = final
+        if game_status_id != 2:
+            return {
+                "is_live": False,
+                "status_text": game_status_text
+            }
+
+        # Pull live box score
+        box = boxscoretraditionalv2.BoxScoreTraditionalV2(game_id=game_id)
+        player_stats_df = box.player_stats.get_data_frame()
+        team_stats_df = box.team_stats.get_data_frame()
+
+        player_row = player_stats_df[player_stats_df["PLAYER_ID"] == player_id]
+        if player_row.empty:
+            return {
+                "is_live": True,
+                "status_text": game_status_text,
+                "pts": 0,
+                "fgm": 0,
+                "fga": 0,
+                "minutes": "0",
+                "matchup_score": ""
+            }
+
+        player_row = player_row.iloc[0]
+
+        matchup_rows = line_score_df[line_score_df["GAME_ID"] == game_id]
+        if len(matchup_rows) == 2:
+            away = matchup_rows.iloc[0]
+            home = matchup_rows.iloc[1]
+            matchup_score = f"{away['TEAM_ABBREVIATION']} {away['PTS']} - {home['PTS']} {home['TEAM_ABBREVIATION']}"
+        else:
+            matchup_score = ""
+
+        return {
+            "is_live": True,
+            "status_text": game_status_text,   # example: Q2 07:36
+            "pts": int(player_row["PTS"]),
+            "fgm": int(player_row["FGM"]),
+            "fga": int(player_row["FGA"]),
+            "minutes": str(player_row["MIN"]),
+            "matchup_score": matchup_score
+        }
+
+    except Exception as e:
+        return {
+            "is_live": False,
+            "status_text": f"Live data unavailable: {e}"
+        }
 
 @st.cache_resource
 def get_gsheet():
@@ -52,7 +166,7 @@ def append_to_sheet(player_name, game_date, line, sportsbook, last_update, predi
         ""
     ])
 
-APP_VERSION = "v1.37 - fix upload button"
+APP_VERSION = "v1.38 - Get live game data"
 
 
 st.set_page_config(
@@ -488,24 +602,6 @@ TEAM_THEMES = {
 def get_model_mtime():
     return os.path.getmtime("models/points_regression.pkl")
 
-def get_live_player_stats(game_id, player_id):
-    box = run_with_retry(
-        lambda: boxscoretraditionalv2.BoxScoreTraditionalV2(game_id=game_id)
-    )
-    player_stats = box.player_stats.get_data_frame()
-
-    row = player_stats[player_stats["PLAYER_ID"] == player_id]
-
-    if row.empty:
-        return None
-
-    row = row.iloc[0]
-
-    return {
-        "current_points": int(row["PTS"]),
-        "current_minutes": row["MIN"]
-    }
-
 @st.cache_resource
 def load_model(_mtime):
     return joblib.load("models/points_regression.pkl")
@@ -797,24 +893,24 @@ def update_all_pending_sheet_results():
 def get_live_game_stats(game_id, team_abbr):
     try:
         scoreboard = scoreboardv2.ScoreboardV2()
+        game_header = scoreboard.game_header.get_data_frame()
         line_score = scoreboard.line_score.get_data_frame()
 
-        if line_score.empty:
+        if line_score.empty or game_header.empty:
             return None, None
 
         game_rows = line_score[line_score["GAME_ID"].astype(str) == str(game_id)]
+        header_row = game_header[game_header["GAME_ID"].astype(str) == str(game_id)]
 
-        if game_rows.empty:
+        if game_rows.empty or header_row.empty:
             return None, None
 
         team_row = game_rows[game_rows["TEAM_ABBREVIATION"] == team_abbr]
-
         if team_row.empty:
             return None, None
 
         team_points = team_row.iloc[0]["PTS"]
-
-        game_status = game_rows.iloc[0]["GAME_STATUS_TEXT"]
+        game_status = header_row.iloc[0]["GAME_STATUS_TEXT"]
 
         return team_points, game_status
 
@@ -1139,7 +1235,10 @@ if selected_player:
         today_game_info = get_team_game_info(team_id, team_abbr, today_str)
 
         live_points = None
+        live_fgm = None
+        live_fga = None
         live_minutes = None
+        live_clock = None
 
         if today_game_info:
             matchup = today_game_info["matchup"]
@@ -1157,14 +1256,17 @@ if selected_player:
 
             if is_live_game:
                 game_status = "Live now"
-                st_autorefresh(interval=60000, key=f"live_refresh_{live_game_id}")
+                st_autorefresh(interval=20000, key=f"live_refresh_{live_game_id}")
 
                 if live_game_id:
                     live_player_stats = get_live_player_stats(live_game_id, player_id)
                     if live_player_stats:
-                        live_points = live_player_stats["current_points"]
+                        live_points = live_player_stats["pts"]
+                        live_fgm = live_player_stats["fgm"]
+                        live_fga = live_player_stats["fga"]
+                        live_minutes = live_player_stats["minutes"]
 
-                    _, live_minutes = get_live_game_stats(live_game_id, team_abbr)
+                    _, live_clock = get_live_game_stats(live_game_id, team_abbr)
 
             elif is_final_game:
                 game_status = "Final"
@@ -1172,9 +1274,12 @@ if selected_player:
                 if live_game_id:
                     live_player_stats = get_live_player_stats(live_game_id, player_id)
                     if live_player_stats:
-                        live_points = live_player_stats["current_points"]
+                        live_points = live_player_stats["pts"]
+                        live_fgm = live_player_stats["fgm"]
+                        live_fga = live_player_stats["fga"]
+                        live_minutes = live_player_stats["minutes"]
 
-                live_minutes = "Final"
+                live_clock = "Final"
 
             else:
                 game_status = "Game today"
@@ -1494,12 +1599,22 @@ if selected_player:
 
         if live_points is not None:
             model_cards.append(
-                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Live Points</div><div class="model-stat-value">{live_points}</div></div>'
+                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Current Points</div><div class="model-stat-value">{live_points}</div></div>'
+            )
+
+        if live_fgm is not None and live_fga is not None:
+            model_cards.append(
+                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">FGM / FGA</div><div class="model-stat-value">{live_fgm} / {live_fga}</div></div>'
+            )
+
+        if live_clock is not None:
+            model_cards.append(
+                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Time Remaining</div><div class="model-stat-value">{live_clock}</div></div>'
             )
 
         if live_minutes is not None:
             model_cards.append(
-                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Game Status</div><div class="model-stat-value">{live_minutes}</div></div>'
+                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Minutes Played</div><div class="model-stat-value">{live_minutes}</div></div>'
             )
 
         model_cards.extend([
