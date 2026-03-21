@@ -1059,11 +1059,15 @@ with st.expander("Admin Tools", expanded=False):
         st.error("Invalid admin key")
 
     if admin_mode and st.button("Update Final Results"):
+        status_box = st.info("Checking pending rows and updating final results...")
+    
         try:
             updated_count, checked_count = update_all_pending_sheet_results()
-            st.success(f"Checked {checked_count} pending rows. Updated {updated_count} completed games.")
+            status_box.success(
+                f"Done. Checked {checked_count} pending rows and updated {updated_count} completed games."
+            )
         except Exception as e:
-            st.error(f"Batch update failed: {e}")
+            status_box.error(f"Batch update failed: {e}")
 
 selected_search_name = st.selectbox(
     "Search Player",
