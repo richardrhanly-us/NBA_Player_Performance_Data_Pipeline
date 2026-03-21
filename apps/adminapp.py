@@ -352,7 +352,7 @@ else:
                 unsafe_allow_html=True
             )
 
-        top_plays_df = get_top_plays_today_df(odds_api_key)
+        top_plays_df = get_top_plays_today_df(odds_api_key, debug=True)
 
         status_box.empty()
 
