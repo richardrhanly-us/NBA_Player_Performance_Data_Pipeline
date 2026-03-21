@@ -21,7 +21,7 @@ from nba_api.live.nba.endpoints import boxscore as live_boxscore
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 CURRENT_SEASON = "2025-26"
-APP_VERSION = "v1.41 - sportsbook panel fix"
+APP_VERSION = "v1.42 - win rate and pipeline health updates"
 
 BOOKMAKER_MAP = {
     "DraftKings": "draftkings",
@@ -674,6 +674,42 @@ def run_with_retry(func, retries=3, delay=1.5, fallback=None):
         return fallback
     raise last_error
 
+
+@st.cache_data(ttl=120)
+def get_strong_plays_health():
+    sheet = get_strong_plays_sheet()
+    values = sheet.get_all_values()
+
+    if not values or len(values) < 2:
+        return None
+
+    headers = values[0]
+    rows = values[1:]
+    df = pd.DataFrame(rows, columns=headers)
+
+    if "bet_status" not in df.columns:
+        return None
+
+    df["bet_status"] = df["bet_status"].astype(str).str.strip().str.upper()
+
+    total = len(df)
+    graded = len(df[df["bet_status"].isin(["WIN", "LOSS"])])
+    pending = len(df[df["bet_status"] == "PENDING"])
+
+    # Last update timestamp (latest result_logged_at)
+    last_update = None
+    if "result_logged_at" in df.columns:
+        try:
+            last_update = pd.to_datetime(df["result_logged_at"], errors="coerce").max()
+        except Exception:
+            last_update = None
+
+    return {
+        "total": total,
+        "graded": graded,
+        "pending": pending,
+        "last_update": last_update
+    }
 
 def get_player_info_df(player_id):
     try:
@@ -1418,6 +1454,7 @@ selected_book = st.selectbox(
 
 odds_api_key = os.getenv("ODDS_API_KEY")
 top_games_win_rate, top_games_total = get_strong_plays_summary()
+health = get_strong_plays_health()
 
 st.markdown('<div class="section-card"><div class="section-title">Top Plays Today</div>', unsafe_allow_html=True)
 
@@ -1461,6 +1498,34 @@ else:
         """,
         unsafe_allow_html=True
     )
+
+
+if health:
+    last_update_str = (
+        health["last_update"].strftime("%b %d, %I:%M %p")
+        if health["last_update"] is not None
+        else "N/A"
+    )
+
+    st.markdown(
+        f"""
+        <div style="
+            background: rgba(15,23,42,0.6);
+            border: 1px solid rgba(255,255,255,0.04);
+            border-radius: 10px;
+            padding: 10px 12px;
+            margin-bottom: 12px;
+            font-size: 0.85rem;
+            color: #94a3b8;
+        ">
+            <div>Last Update: <span style="color:#f8fafc;">{last_update_str}</span></div>
+            <div>Total Plays: <span style="color:#f8fafc;">{health["total"]}</span></div>
+            <div>Graded: <span style="color:#22c55e;">{health["graded"]}</span> | Pending: <span style="color:#f59e0b;">{health["pending"]}</span></div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 
 if odds_api_key:
     try:
