@@ -1470,467 +1470,467 @@ if not selected_player:
 """, unsafe_allow_html=True)
     st.stop()
 
-try:
-    player_id = player_name_map[selected_player]
-
-    sportsbook_line = None
-    over_price = None
-    under_price = None
-    book_name = selected_book
-    book_updated = None
-    line_source = "Manual"
-    game_available_in_feed = False
-
-    player_info = get_player_info_df(player_id)
-
-    nba_data_available = True
-    nba_data_message = ""
-
-    if player_info is None or player_info.empty:
-        nba_data_available = False
-        nba_data_message = "NBA player data is temporarily unavailable. Sportsbook info may still load, but model and game details are paused."
-        team_id = None
-        team_abbr = None
-    else:
-        team_id = int(player_info.loc[0, "TEAM_ID"])
-        team_abbr = player_info.loc[0, "TEAM_ABBREVIATION"]
-        team_theme = get_team_theme(team_abbr)
-
-    if not nba_data_available:
-        st.warning(nba_data_message)
-
-        st.markdown("""
-        <div class="section-card">
-            <div class="section-title">Model Output</div>
-            <div class="small-note">
-                Prediction data is temporarily unavailable because the NBA stats service did not respond.
+    try:
+        player_id = player_name_map[selected_player]
+    
+        sportsbook_line = None
+        over_price = None
+        under_price = None
+        book_name = selected_book
+        book_updated = None
+        line_source = "Manual"
+        game_available_in_feed = False
+    
+        player_info = get_player_info_df(player_id)
+    
+        nba_data_available = True
+        nba_data_message = ""
+    
+        if player_info is None or player_info.empty:
+            nba_data_available = False
+            nba_data_message = "NBA player data is temporarily unavailable. Sportsbook info may still load, but model and game details are paused."
+            team_id = None
+            team_abbr = None
+        else:
+            team_id = int(player_info.loc[0, "TEAM_ID"])
+            team_abbr = player_info.loc[0, "TEAM_ABBREVIATION"]
+            team_theme = get_team_theme(team_abbr)
+    
+        if not nba_data_available:
+            st.warning(nba_data_message)
+    
+            st.markdown("""
+            <div class="section-card">
+                <div class="section-title">Model Output</div>
+                <div class="small-note">
+                    Prediction data is temporarily unavailable because the NBA stats service did not respond.
+                </div>
+            </div>
+    
+            <div class="section-card">
+                <div class="section-title">Game Info</div>
+                <div class="small-note">
+                    Live game and player details are temporarily unavailable.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+        else:
+            primary = team_theme["primary"]
+            secondary = team_theme["secondary"]
+    
+            model_bg = (
+                f"linear-gradient(135deg, "
+                f"{hex_to_rgba(primary, 0.35)} 0%, "
+                f"{hex_to_rgba(secondary, 0.25)} 50%, "
+                f"rgba(15, 23, 42, 0.95) 100%)"
+            )
+    
+            model_border = primary
+            model_glow = hex_to_rgba(primary, 0.28)
+            model_stat_bg = "rgba(255, 255, 255, 0.06)"
+            model_stat_border = hex_to_rgba(secondary, 0.32)
+            model_label_color = "#cbd5e1"
+    
+            eastern = pytz.timezone("US/Eastern")
+            now_et = datetime.now(eastern)
+            if now_et.hour < 4:
+                now_et = now_et - pd.Timedelta(days=1)
+    
+            today_str = now_et.strftime("%m/%d/%Y")
+            try:
+                today_game_info = get_team_game_info(team_id, team_abbr, today_str)
+            except Exception:
+                today_game_info = None
+    
+            live_points = None
+            live_fgm = None
+            live_fga = None
+            live_minutes = None
+            live_game_id = None
+    
+            if today_game_info:
+                matchup = today_game_info["matchup"]
+                game_date = today_game_info["date"]
+                game_time = today_game_info["time"]
+                live_game_id = today_game_info.get("game_id")
+                game_status = "Game today"
+    
+                if live_game_id:
+                    st_autorefresh(interval=10000, key=f"live_refresh_{live_game_id}")
+                    live_player_stats, _ = get_live_player_stats(live_game_id, player_id, selected_player)
+    
+                    if live_player_stats:
+                        live_points = live_player_stats["pts"]
+                        live_fgm = live_player_stats["fgm"]
+                        live_fga = live_player_stats["fga"]
+                        live_minutes = format_minutes_played(live_player_stats["minutes"])
+                        game_status = "Live now"
+            else:
+                next_game_info = None
+                for i in range(1, 8):
+                    future_date = now_et + pd.Timedelta(days=i)
+                    future_date_str = future_date.strftime("%m/%d/%Y")
+                    next_game_info = get_team_game_info(team_id, team_abbr, future_date_str)
+                    if next_game_info:
+                        break
+    
+                if next_game_info:
+                    game_status = "No game today"
+                    matchup = next_game_info["matchup"]
+                    game_date = next_game_info["date"]
+                    game_time = next_game_info["time"]
+                else:
+                    game_status = "No game found"
+                    matchup = "N/A"
+                    game_date = "N/A"
+                    game_time = "N/A"
+    
+            if odds_api_key and matchup != "N/A":
+                try:
+                    events = fetch_upcoming_nba_events(odds_api_key)
+                    event_id = find_matching_event_id(events, matchup)
+                    game_available_in_feed = event_id is not None
+    
+                    if event_id:
+                        event_odds = fetch_player_points_market(
+                            odds_api_key,
+                            event_id,
+                            BOOKMAKER_MAP[selected_book]
+                        )
+                        prop = extract_player_prop(event_odds, selected_player)
+                        if prop:
+                            sportsbook_line = prop["line"]
+                            over_price = prop["over_price"]
+                            under_price = prop["under_price"]
+                            book_name = prop["bookmaker"]
+                            book_updated = prop["last_update"]
+                            line_source = "Sportsbook API"
+                except Exception:
+                    sportsbook_line = None
+    
+            update_text = book_updated if book_updated else "N/A"
+    
+            st.markdown(f"""
+    <div class="sportsbook-compact">
+        <div class="sportsbook-compact-grid">
+            <div class="sportsbook-compact-item">
+                <div class="sportsbook-compact-label">Line</div>
+                <div class="sportsbook-compact-value">{f"{sportsbook_line:.1f}" if sportsbook_line is not None else "N/A"}</div>
+            </div>
+            <div class="sportsbook-compact-item">
+                <div class="sportsbook-compact-label">Prices</div>
+                <div class="sportsbook-compact-value">O {american_odds_text(over_price)} / U {american_odds_text(under_price)}</div>
+            </div>
+            <div class="sportsbook-compact-item">
+                <div class="sportsbook-compact-label">Book</div>
+                <div class="sportsbook-compact-value">{book_name}</div>
+            </div>
+            <div class="sportsbook-compact-item">
+                <div class="sportsbook-compact-label">Source</div>
+                <div class="sportsbook-compact-value">{line_source}</div>
             </div>
         </div>
-
+        <div class="sportsbook-compact-note">Last update: {update_text}</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+            default_line = sportsbook_line if sportsbook_line is not None else 20.5
+    
+            col_line, col_toggle = st.columns([4, 1])
+    
+            with col_toggle:
+                manual_override = st.checkbox("Manual line", value=False)
+    
+            with col_line:
+                line = st.number_input(
+                    "Points line",
+                    min_value=0.0,
+                    value=float(default_line),
+                    step=0.5,
+                    disabled=(sportsbook_line is not None and not manual_override)
+                )
+    
+            if sportsbook_line is not None and not manual_override:
+                line = sportsbook_line
+                line_source = "Sportsbook API"
+            elif manual_override:
+                line_source = "Manual line"
+            else:
+                line = None
+                line_source = "No posted line"
+    
+            has_real_line = sportsbook_line is not None
+            using_manual_line = manual_override
+            can_grade_edge = has_real_line or using_manual_line
+    
+            df = get_player_gamelog_df(player_id, CURRENT_SEASON)
+            if df.empty:
+                st.warning("NBA game log is temporarily unavailable. Please try again in a moment.")
+                st.stop()
+    
+            X = build_player_feature_row(df, selected_player)
+            if X is None or X.empty:
+                st.warning("Not enough recent games to build features yet.")
+                st.stop()
+    
+            latest_df = df.copy()
+            latest_df["PLAYER_NAME"] = selected_player
+            latest_df["GAME_DATE"] = pd.to_datetime(latest_df["GAME_DATE"])
+            latest_df = latest_df.sort_values("GAME_DATE").reset_index(drop=True)
+    
+            numeric_cols = [
+                "PTS", "FGM", "FGA", "FTA", "FTM", "OREB", "DREB",
+                "STL", "AST", "BLK", "PF", "TOV", "MIN"
+            ]
+            for col in numeric_cols:
+                latest_df[col] = pd.to_numeric(latest_df[col], errors="coerce")
+    
+            if "FG3A" in latest_df.columns:
+                latest_df["FG3A"] = pd.to_numeric(latest_df["FG3A"], errors="coerce")
+    
+            latest_df["gmsc"] = (
+                latest_df["PTS"]
+                + 0.4 * latest_df["FGM"]
+                - 0.7 * latest_df["FGA"]
+                - 0.4 * (latest_df["FTA"] - latest_df["FTM"])
+                + 0.7 * latest_df["OREB"]
+                + 0.3 * latest_df["DREB"]
+                + latest_df["STL"]
+                + 0.7 * latest_df["AST"]
+                + 0.7 * latest_df["BLK"]
+                - 0.4 * latest_df["PF"]
+                - latest_df["TOV"]
+            )
+    
+            latest_df["player_avg_pts"] = latest_df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).expanding().mean())
+            latest_df["player_avg_pts_sq"] = latest_df["player_avg_pts"] ** 2
+            latest_df["last3_pts"] = latest_df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).rolling(3).mean())
+            latest_df["last5_pts"] = latest_df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).rolling(5).mean())
+            latest_df["last10_pts"] = latest_df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).rolling(10).mean())
+            latest_df["last20_pts"] = latest_df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).rolling(20).mean())
+            latest_df["last5_fga"] = latest_df.groupby("PLAYER_NAME")["FGA"].transform(lambda x: x.shift(1).rolling(5).mean())
+            latest_df["last5_fta"] = latest_df.groupby("PLAYER_NAME")["FTA"].transform(lambda x: x.shift(1).rolling(5).mean())
+            latest_df["last5_minutes"] = latest_df.groupby("PLAYER_NAME")["MIN"].transform(lambda x: x.shift(1).rolling(5).mean())
+            latest_df["last5_gmsc"] = latest_df.groupby("PLAYER_NAME")["gmsc"].transform(lambda x: x.shift(1).rolling(5).mean())
+            latest_df["home_game"] = latest_df["MATCHUP"].str.contains("vs").astype(int)
+            latest_df["days_rest"] = latest_df.groupby("PLAYER_NAME")["GAME_DATE"].diff().dt.days.fillna(3)
+            latest_df["is_back_to_back"] = (latest_df["days_rest"] == 1).astype(int)
+            latest_df["usage_proxy"] = latest_df["FGA"] + 0.44 * latest_df["FTA"] + latest_df["TOV"]
+            latest_df["last5_usage_proxy"] = latest_df.groupby("PLAYER_NAME")["usage_proxy"].transform(lambda x: x.shift(1).rolling(5).mean())
+            latest_df["season_minutes_avg"] = latest_df.groupby("PLAYER_NAME")["MIN"].transform(lambda x: x.shift(1).expanding().mean())
+            latest_df["minutes_volatility"] = latest_df.groupby("PLAYER_NAME")["MIN"].transform(lambda x: x.shift(1).rolling(5).std())
+            latest_df["points_volatility"] = latest_df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).rolling(5).std())
+    
+            if "FG3A" in latest_df.columns:
+                latest_df["last5_3pa"] = latest_df.groupby("PLAYER_NAME")["FG3A"].transform(lambda x: x.shift(1).rolling(5).mean())
+    
+            required_features = [
+                "player_avg_pts",
+                "player_avg_pts_sq",
+                "season_minutes_avg",
+                "home_game",
+                "days_rest",
+                "is_back_to_back",
+                "last3_pts",
+                "last5_pts",
+                "last10_pts",
+                "last20_pts",
+                "last5_fga",
+                "last5_fta",
+                "last5_minutes",
+                "last5_gmsc",
+                "last5_usage_proxy",
+                "minutes_volatility",
+                "points_volatility"
+            ]
+    
+            if "last5_3pa" in latest_df.columns:
+                required_features.append("last5_3pa")
+    
+            latest_features = latest_df.dropna(subset=required_features).reset_index(drop=True)
+            latest = latest_features.iloc[-1]
+    
+            if model_feature_names:
+                X = X.reindex(columns=model_feature_names, fill_value=0)
+    
+            predicted_points = float(model.predict(X)[0])
+    
+            model_pick_value = ""
+    
+            if sportsbook_line is not None:
+                model_pick_value = "OVER" if predicted_points > sportsbook_line else "UNDER"
+    
+                log_key = f"{selected_player}|{game_date}|{book_name}|{sportsbook_line}"
+    
+                if st.session_state.get("last_logged_key") != log_key:
+                    try:
+                        append_to_sheet(
+                            player_name=selected_player,
+                            game_date=game_date,
+                            line=sportsbook_line,
+                            sportsbook=book_name,
+                            last_update=book_updated,
+                            predicted_points=f"{predicted_points:.2f}",
+                            model_pick=model_pick_value
+                        )
+                        st.session_state["last_logged_key"] = log_key
+                    except Exception as e:
+                        st.error(f"Google Sheets logging failed: {e}")
+    
+            if can_grade_edge:
+                edge = predicted_points - line
+                prob_over = 1 - norm.cdf(line, loc=predicted_points, scale=points_std)
+                prob_under = 1 - prob_over
+                pick_text, pick_kind = get_pick_label(edge)
+            else:
+                edge = None
+                prob_over = None
+                prob_under = None
+                pick_text = "No Posted Line"
+                pick_kind = "neutral"
+    
+            if pick_kind == "over":
+                pick_bg = "rgba(34,197,94,0.25)"
+                pick_border = "#22c55e"
+                pick_text_color = "#22c55e"
+            elif pick_kind == "under":
+                pick_bg = "rgba(239,68,68,0.25)"
+                pick_border = "#ef4444"
+                pick_text_color = "#ef4444"
+            else:
+                pick_bg = "rgba(148,163,184,0.12)"
+                pick_border = "#94a3b8"
+                pick_text_color = "#e5e7eb"
+    
+            if not can_grade_edge:
+                interpretation_text = ""
+            elif abs(edge) < 1.5:
+                interpretation_text = (
+                    f"The model projects {predicted_points:.2f} points against a line of {line:.1f}, "
+                    f"which is too close to call confidently."
+                )
+            else:
+                interpretation_text = (
+                    f"The model projects a {prob_over:.0%} chance of the over hitting compared to "
+                    f"{prob_under:.0%} for the under."
+                )
+    
+            if game_status == "Final" and sportsbook_line is not None:
+                try:
+                    final_points = get_final_points_from_gamelog(player_id, game_date)
+                    if final_points is not None:
+                        update_sheet_with_final_result(
+                            player_name=selected_player,
+                            game_date=game_date,
+                            sportsbook=book_name,
+                            predicted_points=predicted_points,
+                            final_points=final_points
+                        )
+                except Exception:
+                    pass
+    
+            model_cards = [
+                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Predicted Points</div><div class="model-stat-value">{predicted_points:.2f}</div></div>',
+                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Sportsbook Line</div><div class="model-stat-value">{f"{line:.1f}" if can_grade_edge else "No posted line"}</div></div>',
+                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Model Edge</div><div class="model-stat-value">{f"{edge:+.2f}" if can_grade_edge else "N/A"}</div></div>',
+                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Probability Split</div><div class="model-stat-value">{f"O {prob_over:.1%} / U {prob_under:.1%}" if can_grade_edge else "No posted line"}</div></div>'
+            ]
+    
+            model_html = "\n".join([
+                f'<div class="model-card" style="background: {model_bg}; border: 3px solid {model_border}; box-shadow: 0 0 0 1px {hex_to_rgba(secondary, 0.16)}, 0 0 28px {model_glow}, 0 0 50px {hex_to_rgba(primary, 0.18)};">',
+                f'<div class="model-title" style="color: #ffffff;">{selected_player}</div>',
+                f'<div class="model-subtitle">{"Next Scheduled Game Projection: " + game_date + " • " + game_time if game_status == "No game today" else "Model Output"}</div>',
+                '<div class="model-main">',
+                "".join(model_cards),
+                '</div>',
+                f'<div class="prob-interpretation" style="margin-top: 14px; font-size: 0.98rem; color: #cbd5e1; display: {"block" if interpretation_text else "none"};">{interpretation_text}</div>',
+                f'<div style="width: 100%; margin-top: 14px;"><div class="pick-banner" style="background: {pick_bg}; color: {pick_text_color}; border: 2px solid {pick_border};">{pick_text}</div></div>',
+                f'<div class="small-note" style="margin-top: 10px;">{"" if not can_grade_edge else "Trained regression model output compared against the current sportsbook line."}</div>',
+                '</div>'
+            ])
+            st.markdown(model_html, unsafe_allow_html=True)
+    
+            game_info_html = f"""
         <div class="section-card">
             <div class="section-title">Game Info</div>
-            <div class="small-note">
-                Live game and player details are temporarily unavailable.
+            <div class="summary-strip">
+                <div class="summary-item">
+                    <div class="summary-label">Status</div>
+                    <div class="summary-value">{game_status}</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-label">Matchup</div>
+                    <div class="summary-value">{matchup}</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-label">Date</div>
+                    <div class="summary-value">{game_date}</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-label">Time</div>
+                    <div class="summary-value">{game_time}</div>
+                </div>
+            </div>
+        """
+    
+            if live_points is not None:
+                game_info_html += f"""
+        <div class="summary-strip-live">
+            <div class="summary-item">
+                <div class="summary-label">PTS</div>
+                <div class="summary-value">{live_points}</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-label">FG</div>
+                <div class="summary-value">{live_fgm} / {live_fga}</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-label">MIN</div>
+                <div class="summary-value">{live_minutes}</div>
+            </div>
+        </div>
+        """
+            game_info_html += "</div>"
+            st.markdown(game_info_html, unsafe_allow_html=True)
+    
+            sportsbook_message = ""
+            if not odds_api_key:
+                sportsbook_message = "ODDS_API_KEY not found. Using manual line only."
+            elif matchup != "N/A" and not game_available_in_feed:
+                sportsbook_message = "This game is not yet available in the sportsbook events feed. Using manual fallback."
+            elif sportsbook_line is None:
+                sportsbook_message = "Game found, but no player points line is posted for this player/book yet."
+    
+            if sportsbook_message:
+                st.info(sportsbook_message)
+    
+            recent_games = latest_df.sort_values("GAME_DATE", ascending=False).head(5).copy()
+            recent_games["GAME_DATE"] = recent_games["GAME_DATE"].dt.strftime("%Y-%m-%d")
+    
+            st.markdown(f"""
+        <div class="section-card">
+            <div class="section-title">Scoring Snapshot</div>
+            <div class="recent-grid">
+                <div class="recent-box">
+                    <div class="recent-label">Season Avg PPG</div>
+                    <div class="recent-value">{latest["player_avg_pts"]:.2f}</div>
+                </div>
+                <div class="recent-box">
+                    <div class="recent-label">Last 5 Avg PTS</div>
+                    <div class="recent-value">{latest["last5_pts"]:.2f}</div>
+                </div>
+                <div class="recent-box">
+                    <div class="recent-label">Last 5 Avg MIN</div>
+                    <div class="recent-value">{latest["last5_minutes"]:.2f}</div>
+                </div>
+                <div class="recent-box">
+                    <div class="recent-label">Last 5 Avg GmSc</div>
+                    <div class="recent-value">{latest["last5_gmsc"]:.2f}</div>
+                </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
-
-    else:
-        primary = team_theme["primary"]
-        secondary = team_theme["secondary"]
-
-        model_bg = (
-            f"linear-gradient(135deg, "
-            f"{hex_to_rgba(primary, 0.35)} 0%, "
-            f"{hex_to_rgba(secondary, 0.25)} 50%, "
-            f"rgba(15, 23, 42, 0.95) 100%)"
-        )
-
-        model_border = primary
-        model_glow = hex_to_rgba(primary, 0.28)
-        model_stat_bg = "rgba(255, 255, 255, 0.06)"
-        model_stat_border = hex_to_rgba(secondary, 0.32)
-        model_label_color = "#cbd5e1"
-
-        eastern = pytz.timezone("US/Eastern")
-        now_et = datetime.now(eastern)
-        if now_et.hour < 4:
-            now_et = now_et - pd.Timedelta(days=1)
-
-        today_str = now_et.strftime("%m/%d/%Y")
-        try:
-            today_game_info = get_team_game_info(team_id, team_abbr, today_str)
-        except Exception:
-            today_game_info = None
-
-        live_points = None
-        live_fgm = None
-        live_fga = None
-        live_minutes = None
-        live_game_id = None
-
-        if today_game_info:
-            matchup = today_game_info["matchup"]
-            game_date = today_game_info["date"]
-            game_time = today_game_info["time"]
-            live_game_id = today_game_info.get("game_id")
-            game_status = "Game today"
-
-            if live_game_id:
-                st_autorefresh(interval=10000, key=f"live_refresh_{live_game_id}")
-                live_player_stats, _ = get_live_player_stats(live_game_id, player_id, selected_player)
-
-                if live_player_stats:
-                    live_points = live_player_stats["pts"]
-                    live_fgm = live_player_stats["fgm"]
-                    live_fga = live_player_stats["fga"]
-                    live_minutes = format_minutes_played(live_player_stats["minutes"])
-                    game_status = "Live now"
-        else:
-            next_game_info = None
-            for i in range(1, 8):
-                future_date = now_et + pd.Timedelta(days=i)
-                future_date_str = future_date.strftime("%m/%d/%Y")
-                next_game_info = get_team_game_info(team_id, team_abbr, future_date_str)
-                if next_game_info:
-                    break
-
-            if next_game_info:
-                game_status = "No game today"
-                matchup = next_game_info["matchup"]
-                game_date = next_game_info["date"]
-                game_time = next_game_info["time"]
-            else:
-                game_status = "No game found"
-                matchup = "N/A"
-                game_date = "N/A"
-                game_time = "N/A"
-
-        if odds_api_key and matchup != "N/A":
-            try:
-                events = fetch_upcoming_nba_events(odds_api_key)
-                event_id = find_matching_event_id(events, matchup)
-                game_available_in_feed = event_id is not None
-
-                if event_id:
-                    event_odds = fetch_player_points_market(
-                        odds_api_key,
-                        event_id,
-                        BOOKMAKER_MAP[selected_book]
-                    )
-                    prop = extract_player_prop(event_odds, selected_player)
-                    if prop:
-                        sportsbook_line = prop["line"]
-                        over_price = prop["over_price"]
-                        under_price = prop["under_price"]
-                        book_name = prop["bookmaker"]
-                        book_updated = prop["last_update"]
-                        line_source = "Sportsbook API"
-            except Exception:
-                sportsbook_line = None
-
-        update_text = book_updated if book_updated else "N/A"
-
-        st.markdown(f"""
-<div class="sportsbook-compact">
-    <div class="sportsbook-compact-grid">
-        <div class="sportsbook-compact-item">
-            <div class="sportsbook-compact-label">Line</div>
-            <div class="sportsbook-compact-value">{f"{sportsbook_line:.1f}" if sportsbook_line is not None else "N/A"}</div>
-        </div>
-        <div class="sportsbook-compact-item">
-            <div class="sportsbook-compact-label">Prices</div>
-            <div class="sportsbook-compact-value">O {american_odds_text(over_price)} / U {american_odds_text(under_price)}</div>
-        </div>
-        <div class="sportsbook-compact-item">
-            <div class="sportsbook-compact-label">Book</div>
-            <div class="sportsbook-compact-value">{book_name}</div>
-        </div>
-        <div class="sportsbook-compact-item">
-            <div class="sportsbook-compact-label">Source</div>
-            <div class="sportsbook-compact-value">{line_source}</div>
-        </div>
-    </div>
-    <div class="sportsbook-compact-note">Last update: {update_text}</div>
-</div>
-""", unsafe_allow_html=True)
-
-        default_line = sportsbook_line if sportsbook_line is not None else 20.5
-
-        col_line, col_toggle = st.columns([4, 1])
-
-        with col_toggle:
-            manual_override = st.checkbox("Manual line", value=False)
-
-        with col_line:
-            line = st.number_input(
-                "Points line",
-                min_value=0.0,
-                value=float(default_line),
-                step=0.5,
-                disabled=(sportsbook_line is not None and not manual_override)
-            )
-
-        if sportsbook_line is not None and not manual_override:
-            line = sportsbook_line
-            line_source = "Sportsbook API"
-        elif manual_override:
-            line_source = "Manual line"
-        else:
-            line = None
-            line_source = "No posted line"
-
-        has_real_line = sportsbook_line is not None
-        using_manual_line = manual_override
-        can_grade_edge = has_real_line or using_manual_line
-
-        df = get_player_gamelog_df(player_id, CURRENT_SEASON)
-        if df.empty:
-            st.warning("NBA game log is temporarily unavailable. Please try again in a moment.")
-            st.stop()
-
-        X = build_player_feature_row(df, selected_player)
-        if X is None or X.empty:
-            st.warning("Not enough recent games to build features yet.")
-            st.stop()
-
-        latest_df = df.copy()
-        latest_df["PLAYER_NAME"] = selected_player
-        latest_df["GAME_DATE"] = pd.to_datetime(latest_df["GAME_DATE"])
-        latest_df = latest_df.sort_values("GAME_DATE").reset_index(drop=True)
-
-        numeric_cols = [
-            "PTS", "FGM", "FGA", "FTA", "FTM", "OREB", "DREB",
-            "STL", "AST", "BLK", "PF", "TOV", "MIN"
-        ]
-        for col in numeric_cols:
-            latest_df[col] = pd.to_numeric(latest_df[col], errors="coerce")
-
-        if "FG3A" in latest_df.columns:
-            latest_df["FG3A"] = pd.to_numeric(latest_df["FG3A"], errors="coerce")
-
-        latest_df["gmsc"] = (
-            latest_df["PTS"]
-            + 0.4 * latest_df["FGM"]
-            - 0.7 * latest_df["FGA"]
-            - 0.4 * (latest_df["FTA"] - latest_df["FTM"])
-            + 0.7 * latest_df["OREB"]
-            + 0.3 * latest_df["DREB"]
-            + latest_df["STL"]
-            + 0.7 * latest_df["AST"]
-            + 0.7 * latest_df["BLK"]
-            - 0.4 * latest_df["PF"]
-            - latest_df["TOV"]
-        )
-
-        latest_df["player_avg_pts"] = latest_df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).expanding().mean())
-        latest_df["player_avg_pts_sq"] = latest_df["player_avg_pts"] ** 2
-        latest_df["last3_pts"] = latest_df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).rolling(3).mean())
-        latest_df["last5_pts"] = latest_df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).rolling(5).mean())
-        latest_df["last10_pts"] = latest_df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).rolling(10).mean())
-        latest_df["last20_pts"] = latest_df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).rolling(20).mean())
-        latest_df["last5_fga"] = latest_df.groupby("PLAYER_NAME")["FGA"].transform(lambda x: x.shift(1).rolling(5).mean())
-        latest_df["last5_fta"] = latest_df.groupby("PLAYER_NAME")["FTA"].transform(lambda x: x.shift(1).rolling(5).mean())
-        latest_df["last5_minutes"] = latest_df.groupby("PLAYER_NAME")["MIN"].transform(lambda x: x.shift(1).rolling(5).mean())
-        latest_df["last5_gmsc"] = latest_df.groupby("PLAYER_NAME")["gmsc"].transform(lambda x: x.shift(1).rolling(5).mean())
-        latest_df["home_game"] = latest_df["MATCHUP"].str.contains("vs").astype(int)
-        latest_df["days_rest"] = latest_df.groupby("PLAYER_NAME")["GAME_DATE"].diff().dt.days.fillna(3)
-        latest_df["is_back_to_back"] = (latest_df["days_rest"] == 1).astype(int)
-        latest_df["usage_proxy"] = latest_df["FGA"] + 0.44 * latest_df["FTA"] + latest_df["TOV"]
-        latest_df["last5_usage_proxy"] = latest_df.groupby("PLAYER_NAME")["usage_proxy"].transform(lambda x: x.shift(1).rolling(5).mean())
-        latest_df["season_minutes_avg"] = latest_df.groupby("PLAYER_NAME")["MIN"].transform(lambda x: x.shift(1).expanding().mean())
-        latest_df["minutes_volatility"] = latest_df.groupby("PLAYER_NAME")["MIN"].transform(lambda x: x.shift(1).rolling(5).std())
-        latest_df["points_volatility"] = latest_df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).rolling(5).std())
-
-        if "FG3A" in latest_df.columns:
-            latest_df["last5_3pa"] = latest_df.groupby("PLAYER_NAME")["FG3A"].transform(lambda x: x.shift(1).rolling(5).mean())
-
-        required_features = [
-            "player_avg_pts",
-            "player_avg_pts_sq",
-            "season_minutes_avg",
-            "home_game",
-            "days_rest",
-            "is_back_to_back",
-            "last3_pts",
-            "last5_pts",
-            "last10_pts",
-            "last20_pts",
-            "last5_fga",
-            "last5_fta",
-            "last5_minutes",
-            "last5_gmsc",
-            "last5_usage_proxy",
-            "minutes_volatility",
-            "points_volatility"
-        ]
-
-        if "last5_3pa" in latest_df.columns:
-            required_features.append("last5_3pa")
-
-        latest_features = latest_df.dropna(subset=required_features).reset_index(drop=True)
-        latest = latest_features.iloc[-1]
-
-        if model_feature_names:
-            X = X.reindex(columns=model_feature_names, fill_value=0)
-
-        predicted_points = float(model.predict(X)[0])
-
-        model_pick_value = ""
-
-        if sportsbook_line is not None:
-            model_pick_value = "OVER" if predicted_points > sportsbook_line else "UNDER"
-
-            log_key = f"{selected_player}|{game_date}|{book_name}|{sportsbook_line}"
-
-            if st.session_state.get("last_logged_key") != log_key:
-                try:
-                    append_to_sheet(
-                        player_name=selected_player,
-                        game_date=game_date,
-                        line=sportsbook_line,
-                        sportsbook=book_name,
-                        last_update=book_updated,
-                        predicted_points=f"{predicted_points:.2f}",
-                        model_pick=model_pick_value
-                    )
-                    st.session_state["last_logged_key"] = log_key
-                except Exception as e:
-                    st.error(f"Google Sheets logging failed: {e}")
-
-        if can_grade_edge:
-            edge = predicted_points - line
-            prob_over = 1 - norm.cdf(line, loc=predicted_points, scale=points_std)
-            prob_under = 1 - prob_over
-            pick_text, pick_kind = get_pick_label(edge)
-        else:
-            edge = None
-            prob_over = None
-            prob_under = None
-            pick_text = "No Posted Line"
-            pick_kind = "neutral"
-
-        if pick_kind == "over":
-            pick_bg = "rgba(34,197,94,0.25)"
-            pick_border = "#22c55e"
-            pick_text_color = "#22c55e"
-        elif pick_kind == "under":
-            pick_bg = "rgba(239,68,68,0.25)"
-            pick_border = "#ef4444"
-            pick_text_color = "#ef4444"
-        else:
-            pick_bg = "rgba(148,163,184,0.12)"
-            pick_border = "#94a3b8"
-            pick_text_color = "#e5e7eb"
-
-        if not can_grade_edge:
-            interpretation_text = ""
-        elif abs(edge) < 1.5:
-            interpretation_text = (
-                f"The model projects {predicted_points:.2f} points against a line of {line:.1f}, "
-                f"which is too close to call confidently."
-            )
-        else:
-            interpretation_text = (
-                f"The model projects a {prob_over:.0%} chance of the over hitting compared to "
-                f"{prob_under:.0%} for the under."
-            )
-
-        if game_status == "Final" and sportsbook_line is not None:
-            try:
-                final_points = get_final_points_from_gamelog(player_id, game_date)
-                if final_points is not None:
-                    update_sheet_with_final_result(
-                        player_name=selected_player,
-                        game_date=game_date,
-                        sportsbook=book_name,
-                        predicted_points=predicted_points,
-                        final_points=final_points
-                    )
-            except Exception:
-                pass
-
-        model_cards = [
-            f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Predicted Points</div><div class="model-stat-value">{predicted_points:.2f}</div></div>',
-            f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Sportsbook Line</div><div class="model-stat-value">{f"{line:.1f}" if can_grade_edge else "No posted line"}</div></div>',
-            f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Model Edge</div><div class="model-stat-value">{f"{edge:+.2f}" if can_grade_edge else "N/A"}</div></div>',
-            f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Probability Split</div><div class="model-stat-value">{f"O {prob_over:.1%} / U {prob_under:.1%}" if can_grade_edge else "No posted line"}</div></div>'
-        ]
-
-        model_html = "\n".join([
-            f'<div class="model-card" style="background: {model_bg}; border: 3px solid {model_border}; box-shadow: 0 0 0 1px {hex_to_rgba(secondary, 0.16)}, 0 0 28px {model_glow}, 0 0 50px {hex_to_rgba(primary, 0.18)};">',
-            f'<div class="model-title" style="color: #ffffff;">{selected_player}</div>',
-            f'<div class="model-subtitle">{"Next Scheduled Game Projection: " + game_date + " • " + game_time if game_status == "No game today" else "Model Output"}</div>',
-            '<div class="model-main">',
-            "".join(model_cards),
-            '</div>',
-            f'<div class="prob-interpretation" style="margin-top: 14px; font-size: 0.98rem; color: #cbd5e1; display: {"block" if interpretation_text else "none"};">{interpretation_text}</div>',
-            f'<div style="width: 100%; margin-top: 14px;"><div class="pick-banner" style="background: {pick_bg}; color: {pick_text_color}; border: 2px solid {pick_border};">{pick_text}</div></div>',
-            f'<div class="small-note" style="margin-top: 10px;">{"" if not can_grade_edge else "Trained regression model output compared against the current sportsbook line."}</div>',
-            '</div>'
-        ])
-        st.markdown(model_html, unsafe_allow_html=True)
-
-        game_info_html = f"""
-    <div class="section-card">
-        <div class="section-title">Game Info</div>
-        <div class="summary-strip">
-            <div class="summary-item">
-                <div class="summary-label">Status</div>
-                <div class="summary-value">{game_status}</div>
-            </div>
-            <div class="summary-item">
-                <div class="summary-label">Matchup</div>
-                <div class="summary-value">{matchup}</div>
-            </div>
-            <div class="summary-item">
-                <div class="summary-label">Date</div>
-                <div class="summary-value">{game_date}</div>
-            </div>
-            <div class="summary-item">
-                <div class="summary-label">Time</div>
-                <div class="summary-value">{game_time}</div>
-            </div>
-        </div>
-    """
-
-        if live_points is not None:
-            game_info_html += f"""
-    <div class="summary-strip-live">
-        <div class="summary-item">
-            <div class="summary-label">PTS</div>
-            <div class="summary-value">{live_points}</div>
-        </div>
-        <div class="summary-item">
-            <div class="summary-label">FG</div>
-            <div class="summary-value">{live_fgm} / {live_fga}</div>
-        </div>
-        <div class="summary-item">
-            <div class="summary-label">MIN</div>
-            <div class="summary-value">{live_minutes}</div>
-        </div>
-    </div>
-    """
-        game_info_html += "</div>"
-        st.markdown(game_info_html, unsafe_allow_html=True)
-
-        sportsbook_message = ""
-        if not odds_api_key:
-            sportsbook_message = "ODDS_API_KEY not found. Using manual line only."
-        elif matchup != "N/A" and not game_available_in_feed:
-            sportsbook_message = "This game is not yet available in the sportsbook events feed. Using manual fallback."
-        elif sportsbook_line is None:
-            sportsbook_message = "Game found, but no player points line is posted for this player/book yet."
-
-        if sportsbook_message:
-            st.info(sportsbook_message)
-
-        recent_games = latest_df.sort_values("GAME_DATE", ascending=False).head(5).copy()
-        recent_games["GAME_DATE"] = recent_games["GAME_DATE"].dt.strftime("%Y-%m-%d")
-
-        st.markdown(f"""
-    <div class="section-card">
-        <div class="section-title">Scoring Snapshot</div>
-        <div class="recent-grid">
-            <div class="recent-box">
-                <div class="recent-label">Season Avg PPG</div>
-                <div class="recent-value">{latest["player_avg_pts"]:.2f}</div>
-            </div>
-            <div class="recent-box">
-                <div class="recent-label">Last 5 Avg PTS</div>
-                <div class="recent-value">{latest["last5_pts"]:.2f}</div>
-            </div>
-            <div class="recent-box">
-                <div class="recent-label">Last 5 Avg MIN</div>
-                <div class="recent-value">{latest["last5_minutes"]:.2f}</div>
-            </div>
-            <div class="recent-box">
-                <div class="recent-label">Last 5 Avg GmSc</div>
-                <div class="recent-value">{latest["last5_gmsc"]:.2f}</div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
 
         st.dataframe(
             recent_games[["GAME_DATE", "MATCHUP", "PTS", "MIN", "FGA", "FTA"]],
