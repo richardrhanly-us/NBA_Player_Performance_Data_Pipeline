@@ -1395,33 +1395,33 @@ if odds_api_key:
             )
 
         if not top_plays_df.empty:
-            st.markdown("### 🔥 Top 3 Plays")
-                
-                top3 = top_plays_df.head(3)
-                
-                for _, row in top3.iterrows():
-                    win_pct = row["Over %"] if row["Best Bet"] == "OVER" else row["Under %"]
-                
-                    st.markdown(f"""
-                    <div style="
-                        background: rgba(15,23,42,0.88);
-                        border: 1px solid rgba(255,255,255,0.08);
-                        border-radius: 14px;
-                        padding: 14px 16px;
-                        margin-bottom: 10px;
-                        box-shadow: 0 4px 14px rgba(0,0,0,0.18);
-                    ">
-                        <div style="font-size: 1.02rem; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
-                            {row["Player"]} — {row["Best Bet"]} {row["Line"]}
-                        </div>
-                        <div style="color: #cbd5e1; font-size: 0.92rem; margin-bottom: 4px;">
-                            {row["Matchup"]}
-                        </div>
-                        <div style="color: #94a3b8; font-size: 0.88rem;">
-                            Prediction: {row["Prediction"]} | Edge: {row["Edge"]:+.2f} | Win%: {win_pct:.1f}%
-                        </div>
+        st.markdown("### 🔥 Top 3 Plays")
+            
+            top3 = top_plays_df.head(3)
+            
+            for _, row in top3.iterrows():
+                win_pct = row["Over %"] if row["Best Bet"] == "OVER" else row["Under %"]
+            
+                st.markdown(f"""
+                <div style="
+                    background: rgba(15,23,42,0.88);
+                    border: 1px solid rgba(255,255,255,0.08);
+                    border-radius: 14px;
+                    padding: 14px 16px;
+                    margin-bottom: 10px;
+                    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+                ">
+                    <div style="font-size: 1.02rem; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+                        {row["Player"]} — {row["Best Bet"]} {row["Line"]}
                     </div>
-                    """, unsafe_allow_html=True)
+                    <div style="color: #cbd5e1; font-size: 0.92rem; margin-bottom: 4px;">
+                        {row["Matchup"]}
+                    </div>
+                    <div style="color: #94a3b8; font-size: 0.88rem;">
+                        Prediction: {row["Prediction"]} | Edge: {row["Edge"]:+.2f} | Win%: {win_pct:.1f}%
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
 
             
             def highlight_rows(row):
