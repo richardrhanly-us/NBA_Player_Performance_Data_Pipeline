@@ -1376,6 +1376,16 @@ selected_book = st.selectbox(
 
 odds_api_key = os.getenv("ODDS_API_KEY")
 
+st.subheader("🔥 Top 3 Plays")
+
+top3 = top_plays_df.head(3)
+
+for _, row in top3.iterrows():
+    st.markdown(
+        f"**{row['Player']} — {row['Best Bet']} {row['Line']}**  \n"
+        f"Edge: {row['Edge']} | Win%: {row['Over %'] if row['Best Bet']=='OVER' else row['Under %']}%"
+    )
+
 st.markdown('<div class="section-card"><div class="section-title">Top Plays Today</div>', unsafe_allow_html=True)
 
 if odds_api_key:
@@ -1391,11 +1401,25 @@ if odds_api_key:
             )
 
         if not top_plays_df.empty:
+            def highlight_rows(row):
+                edge = abs(row["Edge"])
+            
+                if edge >= 4:
+                    color = "rgba(34,197,94,0.35)"  # strong
+                elif edge >= 3:
+                    color = "rgba(34,197,94,0.2)"   # medium
+                else:
+                    return [""] * len(row)
+            
+                return [f"background-color: {color}"] * len(row)
+            
+            display_df = top_plays_df[[
+                "Player", "Matchup", "Line", "Prediction", "Edge",
+                "Over %", "Under %", "Best Bet", "Book", "O Price", "U Price"
+            ]].head(10)
+            
             st.dataframe(
-                top_plays_df[[
-                    "Player", "Matchup", "Line", "Prediction", "Edge",
-                    "Over %", "Under %", "Best Bet", "Book", "O Price", "U Price"
-                ]].head(10),
+                display_df.style.apply(highlight_rows, axis=1),
                 use_container_width=True,
                 hide_index=True
             )
