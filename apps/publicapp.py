@@ -371,6 +371,33 @@ def safe_live_display(value, fallback="N/A"):
         return fallback
     return str(value)
 
+def format_minutes(minutes_str):
+    if not minutes_str:
+        return "0:00"
+
+    try:
+        # Already clean
+        if ":" in str(minutes_str):
+            return minutes_str
+
+        m = 0
+        s = 0
+
+        text = str(minutes_str).replace("PT", "")
+
+        if "M" in text:
+            m_part = text.split("M")[0]
+            m = int(float(m_part)) if m_part else 0
+            text = text.split("M")[1]
+
+        if "S" in text:
+            s_part = text.replace("S", "")
+            s = int(float(s_part)) if s_part else 0
+
+        return f"{m}:{s:02d}"
+
+    except Exception:
+        return str(minutes_str)
 
 @st.cache_resource
 def get_gsheet_client():
@@ -833,7 +860,7 @@ if selected_player:
                     f"""
                     <div class="mini-card">
                         <div class="mini-title">Minutes</div>
-                        <div class="mini-value">{safe_live_display(live_stats.get('minutes', 'N/A'))}</div>
+                        <div class="mini-value">{format_minutes(live_stats.get('minutes'))}</div>
                     </div>
                     """,
                     unsafe_allow_html=True
