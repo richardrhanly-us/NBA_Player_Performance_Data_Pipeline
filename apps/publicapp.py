@@ -651,40 +651,40 @@ try:
             "sportsbook": "Book",
         })
 
-def row_color(row):
-    edge = row.get("Edge")
-
-    if pd.isna(edge):
-        return [""] * len(row)
-
-    strength = abs(edge)
-
-    # Strong plays = bright green
-    if strength >= 6:
-        color = "rgba(34,197,94,0.8)"
-
-    # Medium = softer green
-    elif strength >= 3:
-        color = "rgba(34,197,94,0.4)"
-
-    # Weak = subtle gray
-    else:
-        color = "rgba(148,163,184,0.15)"
-
-    return [f"background-color: {color};"] * len(row)
-
-
-styled_df = (
-    display_df.head(10)
-    .style
-    .apply(row_color, axis=1)
-)
-
-st.dataframe(
-    styled_df,
-    use_container_width=True,
-    hide_index=True
-)
+        def row_color(row):
+            edge = row.get("Edge")
+        
+            if pd.isna(edge):
+                return [""] * len(row)
+        
+            strength = abs(edge)
+        
+            # Strong plays = bright green
+            if strength >= 6:
+                color = "rgba(34,197,94,0.8)"
+        
+            # Medium = softer green
+            elif strength >= 3:
+                color = "rgba(34,197,94,0.4)"
+        
+            # Weak = subtle gray
+            else:
+                color = "rgba(148,163,184,0.15)"
+        
+            return [f"background-color: {color};"] * len(row)
+        
+        
+        styled_df = (
+            display_df.head(10)
+            .style
+            .apply(row_color, axis=1)
+        )
+        
+        st.dataframe(
+            styled_df,
+            use_container_width=True,
+            hide_index=True
+        )
         
         st.caption("Top plays are prebuilt from the latest updater run for faster loading.")
 except Exception as e:
