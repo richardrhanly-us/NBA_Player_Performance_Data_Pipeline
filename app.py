@@ -572,6 +572,7 @@ def get_gsheet():
     client = gspread.authorize(creds)
     return client.open_by_key("1uhjV_Si-qcILfNJbKZrD52y4JnT_GvqQ0hzN7POekQM").sheet1
 
+st.caption(f"LOG DEBUG | player={selected_player} | line={sportsbook_line} | book={book_name} | date={game_date}")
 
 def append_to_sheet(player_name, game_date, line, sportsbook, last_update, predicted_points="", model_pick=""):
     sheet = get_gsheet()
@@ -981,8 +982,8 @@ def update_all_pending_sheet_results():
             sheet.update_cell(sheet_row_num, col_map["result_logged_at"], logged_at)
             updated_count += 1
 
-        except Exception:
-            pass
+        except Exception as e:
+            st.error(f"Google Sheets logging failed: {e}")
 
     return updated_count, checked_count
 
