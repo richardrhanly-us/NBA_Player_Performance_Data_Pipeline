@@ -1077,6 +1077,14 @@ selected_search_name = st.selectbox(
 )
 
 selected_player = search_name_to_actual.get(selected_search_name) if selected_search_name else None
+if "last_selected_player" not in st.session_state:
+    st.session_state["last_selected_player"] = None
+
+
+
+if st.session_state["last_selected_player"] != selected_player:
+    st.session_state["last_logged_key"] = None
+    st.session_state["last_selected_player"] = selected_player
 
 selected_book = st.selectbox(
     "Sportsbook",
@@ -1416,20 +1424,26 @@ try:
         predicted_points = float(model.predict(X)[0])
     
         model_pick_value = ""
+        
         if sportsbook_line is not None:
             model_pick_value = "OVER" if predicted_points > sportsbook_line else "UNDER"
-            try:
-                append_to_sheet(
-                    player_name=selected_player,
-                    game_date=game_date,
-                    line=sportsbook_line,
-                    sportsbook=book_name,
-                    last_update=book_updated,
-                    predicted_points=f"{predicted_points:.2f}",
-                    model_pick=model_pick_value
-                )
-            except Exception:
-                pass
+        
+            log_key = f"{selected_player}|{game_date}|{book_name}|{sportsbook_line}"
+        
+            if st.session_state.get("last_logged_key") != log_key:
+                try:
+                    append_to_sheet(
+                        player_name=selected_player,
+                        game_date=game_date,
+                        line=sportsbook_line,
+                        sportsbook=book_name,
+                        last_update=book_updated,
+                        predicted_points=f"{predicted_points:.2f}",
+                        model_pick=model_pick_value
+                    )
+                    st.session_state["last_logged_key"] = log_key
+                except Exception as e:
+                    st.error(f"Google Sheets logging failed: {e}")
     
         if can_grade_edge:
             edge = predicted_points - line
