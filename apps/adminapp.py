@@ -1,10 +1,12 @@
+import sys
 import os
 import pandas as pd
 import streamlit as st
 
-from shared_app import (
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from src.shared_app import (
     APP_VERSION,
-    get_gsheet,
     get_strong_plays_sheet,
     get_strong_plays_summary,
     get_strong_plays_health,
