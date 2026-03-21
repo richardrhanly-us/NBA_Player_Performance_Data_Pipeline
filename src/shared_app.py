@@ -523,7 +523,7 @@ def get_available_sportsbooks():
 @st.cache_data(ttl=300)
 def get_player_points_lines(player_name, bookmaker_key):
     try:
-        api_key = st.secrets["32f11724b6958c4e8887b2554b98abf6"]
+        api_key = st.secrets["ODDS_API_KEY"]
     except Exception:
         return None
 
@@ -532,23 +532,63 @@ def get_player_points_lines(player_name, bookmaker_key):
     except Exception:
         return None
 
-    if props_df.empty:
+    if props_df is None or props_df.empty:
         return None
 
-    normalized_target = normalize_name(player_name)
     props_df = props_df.copy()
-    props_df["normalized_name"] = props_df["player_name_raw"].apply(normalize_name)
 
+    # Figure out which player-name column exists
+    if "player_name_raw" in props_df.columns:
+        name_col = "player_name_raw"
+    elif "player_name" in props_df.columns:
+        name_col = "player_name"
+    elif "description" in props_df.columns:
+        name_col = "description"
+    else:
+        return None
+
+    props_df[name_col] = props_df[name_col].astype(str)
+    props_df["normalized_name"] = props_df[name_col].apply(normalize_name)
+
+    normalized_target = normalize_name(player_name)
+
+    # Exact normalized match first
     player_df = props_df[props_df["normalized_name"] == normalized_target].copy()
+
+    # Fallback: contains match
+    if player_df.empty:
+        player_df = props_df[
+            props_df["normalized_name"].str.contains(normalized_target, na=False)
+        ].copy()
+
+    # Fallback: reverse contains match
+    if player_df.empty:
+        player_df = props_df[
+            props_df["normalized_name"].apply(
+                lambda x: normalized_target in x if isinstance(x, str) else False
+            )
+        ].copy()
+
     if player_df.empty:
         return None
 
+    # Keep only rows with a usable line
+    if "line" not in player_df.columns:
+        return None
+
+    player_df["line"] = pd.to_numeric(player_df["line"], errors="coerce")
+    player_df = player_df[player_df["line"].notna()].copy()
+
+    if player_df.empty:
+        return None
+
+    # If multiple rows exist, use the first valid one
     row = player_df.iloc[0]
 
     return {
-        "player_name": row.get("player_name_raw"),
-        "points_line": safe_float(row.get("line")),
-        "sportsbook": bookmaker_key,
+        "player_name": row.get(name_col),
+        "points_line": float(row.get("line")),
+        "sportsbook": row.get("sportsbook", bookmaker_key),
         "home_team": row.get("home_team"),
         "away_team": row.get("away_team"),
         "over_price": row.get("over_price"),
