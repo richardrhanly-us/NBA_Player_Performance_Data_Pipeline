@@ -449,7 +449,7 @@ def fetch_all_today_player_props(api_key, bookmaker_key=BOOKMAKER_KEY):
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def get_top_plays_today_df(api_key):
+def get_top_plays_today_df(api_key, debug=False):
     model = load_model()
     actual_name_to_id, normalized_to_actual = load_active_players()
     model_feature_names = list(getattr(model, "feature_names_in_", []))
@@ -464,9 +464,32 @@ def get_top_plays_today_df(api_key):
 
     rows = []
     gamelog_cache = {}
+    total_rows = len(props_df)
 
-    for _, row in props_df.iterrows():
-        normalized = normalize_name(row["player_name_raw"])
+    status_box = None
+    progress_bar = None
+
+    if debug:
+        status_box = st.empty()
+        progress_bar = st.progress(0)
+
+    for i, (_, row) in enumerate(props_df.iterrows(), start=1):
+        raw_name = row["player_name_raw"]
+
+        if debug:
+            status_box.markdown(
+                f"""
+                <div class="status-box">
+                    <div><span class="muted">Top Plays Status:</span> Scoring player {i} of {total_rows}</div>
+                    <div><span class="muted">Current Player:</span> {raw_name}</div>
+                    <div><span class="muted">Step:</span> Loading gamelog and running model</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            progress_bar.progress(i / total_rows)
+
+        normalized = normalize_name(raw_name)
         actual_name = normalized_to_actual.get(normalized)
         if not actual_name:
             continue
@@ -512,6 +535,23 @@ def get_top_plays_today_df(api_key):
             "away_team": row["away_team"],
             "commence_time": row["commence_time"]
         })
+
+    if debug and status_box is not None:
+        status_box.markdown(
+            """
+            <div class="status-box">
+                <div><span class="muted">Top Plays Status:</span> Ranking strongest edges</div>
+                <div><span class="muted">Step:</span> Finalizing board</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    if debug and progress_bar is not None:
+        progress_bar.progress(1.0)
+        time.sleep(0.3)
+        status_box.empty()
+        progress_bar.empty()
 
     if not rows:
         return pd.DataFrame()
