@@ -1376,7 +1376,7 @@ selected_book = st.selectbox(
 
 odds_api_key = os.getenv("ODDS_API_KEY")
 
-    st.subheader("🔥 Top 3 Plays")
+
     
 
 
