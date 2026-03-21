@@ -651,42 +651,41 @@ try:
             "sportsbook": "Book",
         })
 
-        def edge_color(val):
-            if pd.isna(val):
-                return ""
+def row_color(row):
+    edge = row.get("Edge")
+
+    if pd.isna(edge):
+        return [""] * len(row)
+
+    strength = abs(edge)
+
+    # Strong plays = bright green
+    if strength >= 6:
+        color = "rgba(34,197,94,0.8)"
+
+    # Medium = softer green
+    elif strength >= 3:
+        color = "rgba(34,197,94,0.4)"
+
+    # Weak = subtle gray
+    else:
+        color = "rgba(148,163,184,0.15)"
+
+    return [f"background-color: {color};"] * len(row)
+
+
+styled_df = (
+    display_df.head(10)
+    .style
+    .apply(row_color, axis=1)
+)
+
+st.dataframe(
+    styled_df,
+    use_container_width=True,
+    hide_index=True
+)
         
-            # strong green (best plays)
-            if val >= 6:
-                return "background-color: rgba(34,197,94,0.8); color: black;"
-        
-            # medium green
-            elif val >= 3:
-                return "background-color: rgba(34,197,94,0.4); color: white;"
-        
-            # neutral
-            elif val > -3:
-                return "background-color: rgba(148,163,184,0.15);"
-        
-            # light red
-            elif val > -6:
-                return "background-color: rgba(239,68,68,0.35); color: white;"
-        
-            # strong red
-            else:
-                return "background-color: rgba(239,68,68,0.75); color: white;"
-        
-        
-        styled_df = (
-            display_df.head(10)
-            .style
-            .applymap(edge_color, subset=["Edge"])
-        )
-        
-        st.dataframe(
-            styled_df,
-            use_container_width=True,
-            hide_index=True
-        )
         st.caption("Top plays are prebuilt from the latest updater run for faster loading.")
 except Exception as e:
     st.info(f"Top plays are temporarily unavailable: {e}")
