@@ -1254,7 +1254,11 @@ def get_top_plays_today_df(api_key, bookmaker_key, normalized_to_actual, actual_
     for i, (_, row) in enumerate(props_df.iterrows(), start=1):
         status.text(f"Scoring top plays... {i}/{total_rows}")
         progress.progress(i / total_rows)
-
+    
+        raw_name = row["player_name_raw"]
+        normalized = normalize_name(raw_name)
+        actual_name = normalized_to_actual.get(normalized)
+    
         if not actual_name:
             continue
 
