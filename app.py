@@ -1378,13 +1378,7 @@ odds_api_key = os.getenv("ODDS_API_KEY")
 
     st.subheader("🔥 Top 3 Plays")
     
-    top3 = top_plays_df.head(3)
-    
-    for _, row in top3.iterrows():
-        st.markdown(
-            f"**{row['Player']} — {row['Best Bet']} {row['Line']}**  \n"
-            f"Edge: {row['Edge']} | Win%: {row['Over %'] if row['Best Bet']=='OVER' else row['Under %']}%"
-        )
+
 
 st.markdown('<div class="section-card"><div class="section-title">Top Plays Today</div>', unsafe_allow_html=True)
 
