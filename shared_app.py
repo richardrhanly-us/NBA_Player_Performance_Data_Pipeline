@@ -549,25 +549,44 @@ def get_final_points_from_gamelog(player_name, game_date):
     return final_points
 
 
-def update_sheet_with_final_result(row_number, final_points, sportsbook_line):
+def update_sheet_with_final_result(row_number, final_points, sportsbook_line, model_pick):
     sheet = get_strong_plays_sheet()
 
     line = safe_float(sportsbook_line)
     points = safe_float(final_points)
+    pick = str(model_pick).strip().upper()
+
     if line is None or points is None:
         return False
 
     if points > line:
-        bet_status = "WIN"
+        line_result = "OVER"
     elif points < line:
-        bet_status = "LOSS"
+        line_result = "UNDER"
     else:
+        line_result = "PUSH"
+
+    if line_result == "PUSH":
+        model_result = "PUSH"
+        profit = 0
         bet_status = "PUSH"
+    elif pick == line_result:
+        model_result = "WIN"
+        profit = 0.91
+        bet_status = "WIN"
+    else:
+        model_result = "LOSS"
+        profit = -1
+        bet_status = "LOSS"
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    values = [[points, bet_status, timestamp]]
-    sheet.update(range_name=f"F{row_number}:H{row_number}", values=values)
+    sheet.update(range_name=f"G{row_number}", values=[[points]])
+    sheet.update(range_name=f"H{row_number}", values=[[line_result]])
+    sheet.update(range_name=f"J{row_number}", values=[[model_result]])
+    sheet.update(range_name=f"K{row_number}", values=[[timestamp]])
+    sheet.update(range_name=f"L{row_number}", values=[[profit]])
+    sheet.update(range_name=f"N{row_number}", values=[[bet_status]])
 
     st.cache_data.clear()
     return True
@@ -584,7 +603,7 @@ def update_all_pending_sheet_results():
     rows = values[1:]
     df = pd.DataFrame(rows, columns=headers)
 
-    required_cols = ["PLAYER_NAME", "GAME_DATE", "sportsbook_line", "bet_status"]
+    required_cols = ["PLAYER_NAME", "GAME_DATE", "sportsbook_line", "model_pick", "bet_status"]
     if any(col not in df.columns for col in required_cols):
         raise ValueError("Strong Plays sheet is missing required columns.")
 
@@ -601,6 +620,7 @@ def update_all_pending_sheet_results():
         player_name = row.get("PLAYER_NAME", "")
         game_date = row.get("GAME_DATE", "")
         sportsbook_line = row.get("sportsbook_line", "")
+        model_pick = row.get("model_pick", "")
 
         final_points = get_final_points_from_gamelog(player_name, game_date)
         if final_points is None:
@@ -610,7 +630,8 @@ def update_all_pending_sheet_results():
         success = update_sheet_with_final_result(
             row_number=sheet_row_number,
             final_points=final_points,
-            sportsbook_line=sportsbook_line
+            sportsbook_line=sportsbook_line,
+            model_pick=model_pick
         )
 
         if success:
