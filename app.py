@@ -1193,45 +1193,25 @@ if selected_player:
             st.caption(f"Debug game_time from scoreboard: {game_time}")
             live_game_id = today_game_info.get("game_id")
 
-            live_status_text = str(game_time).lower()
-
-            is_final_game = "final" in live_status_text
-            is_live_game = (
-                any(marker in live_status_text for marker in ["qtr", "quarter", "ot", "halftime", "half"])
-                and not is_final_game
-            )
-
-            if is_live_game:
-                game_status = "Live now"
+            game_status = "Game today"
+            
+            if live_game_id:
                 st_autorefresh(interval=10000, key=f"live_refresh_{live_game_id}")
-
-                if live_game_id:
-                    live_player_stats, live_debug = get_live_player_stats(live_game_id, player_id, selected_player)
-                    
-                    if live_player_stats:
-                        live_points = live_player_stats["pts"]
-                        live_fgm = live_player_stats["fgm"]
-                        live_fga = live_player_stats["fga"]
-                        live_minutes = live_player_stats["minutes"]
-                    else:
-                        st.warning(f"Live stats debug: {live_debug}")
-                st.caption(f"Debug game id: {live_game_id} | player id: {player_id} | player: {selected_player}")
-
-
-            elif is_final_game:
-                game_status = "Final"
-
-                if live_game_id:
-                    live_player_stats = get_live_player_stats(live_game_id, player_id)
-                    if live_player_stats:
-                        live_points = live_player_stats["pts"]
-                        live_fgm = live_player_stats["fgm"]
-                        live_fga = live_player_stats["fga"]
-                        live_minutes = live_player_stats["minutes"]
-
-
-            else:
-                game_status = "Game today"
+            
+                live_player_stats, live_debug = get_live_player_stats(
+                    live_game_id,
+                    player_id,
+                    selected_player
+                )
+            
+                if live_player_stats:
+                    live_points = live_player_stats["pts"]
+                    live_fgm = live_player_stats["fgm"]
+                    live_fga = live_player_stats["fga"]
+                    live_minutes = live_player_stats["minutes"]
+                    game_status = "Live now"
+                else:
+                    live_debug = live_debug
 
         else:
             next_game_info = None
@@ -1592,7 +1572,7 @@ if selected_player:
             </div>
         """
         
-        if live_points is not None or live_fgm is not None or live_minutes is not None:
+        if live_points is not None:
             game_info_html += f"""
         <div class="summary-strip" style="margin-top: 14px;">
         <div class="summary-item">
@@ -1613,6 +1593,8 @@ if selected_player:
         game_info_html += "</div>"
         
         st.markdown(game_info_html, unsafe_allow_html=True)
+        if today_game_info and live_game_id:
+            st.caption(f"Debug live_game_id={live_game_id} | live_points={live_points} | live_fgm={live_fgm} | live_minutes={live_minutes}")
 
         update_text = book_updated if book_updated else "N/A"
 
