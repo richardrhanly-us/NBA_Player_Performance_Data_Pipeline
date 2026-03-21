@@ -11,7 +11,7 @@ from datetime import datetime
 from google.oauth2.service_account import Credentials
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
-from nba_api.live.nba.endpoints import boxscore as live_boxscore
+
 
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -310,6 +310,11 @@ def get_scoreboard_for_date(game_date=None):
         return []
 
 def get_live_player_stats(player_name):
+    try:
+        from nba_api.live.nba.endpoints import boxscore as live_boxscore
+    except Exception:
+        return None
+
     actual_name_to_id, normalized_to_actual = load_active_players()
     actual_name = normalized_to_actual.get(normalize_name(player_name), player_name)
     player_id = actual_name_to_id.get(actual_name)
@@ -337,7 +342,6 @@ def get_live_player_stats(player_name):
 
     try:
         game_header = board_frames[0]
-        line_score = board_frames[1]
     except Exception:
         return None
 
