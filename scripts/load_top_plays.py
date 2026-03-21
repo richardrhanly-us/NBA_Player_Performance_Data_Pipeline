@@ -8,7 +8,6 @@ import unicodedata
 import gspread
 
 from google.oauth2.service_account import Credentials
-from scipy.stats import norm
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog
 
@@ -18,39 +17,6 @@ SHEET_KEY = "1uhjV_Si-qcILfNJbKZrD52y4JnT_GvqQ0hzN7POekQM"
 
 BOOKMAKER_KEY = "draftkings"
 EDGE_THRESHOLD = 3.0
-
-NBA_TEAMS = {
-    "ATL": "Atlanta Hawks",
-    "BOS": "Boston Celtics",
-    "BKN": "Brooklyn Nets",
-    "CHA": "Charlotte Hornets",
-    "CHI": "Chicago Bulls",
-    "CLE": "Cleveland Cavaliers",
-    "DAL": "Dallas Mavericks",
-    "DEN": "Denver Nuggets",
-    "DET": "Detroit Pistons",
-    "GSW": "Golden State Warriors",
-    "HOU": "Houston Rockets",
-    "IND": "Indiana Pacers",
-    "LAC": "Los Angeles Clippers",
-    "LAL": "Los Angeles Lakers",
-    "MEM": "Memphis Grizzlies",
-    "MIA": "Miami Heat",
-    "MIL": "Milwaukee Bucks",
-    "MIN": "Minnesota Timberwolves",
-    "NOP": "New Orleans Pelicans",
-    "NYK": "New York Knicks",
-    "OKC": "Oklahoma City Thunder",
-    "ORL": "Orlando Magic",
-    "PHI": "Philadelphia 76ers",
-    "PHX": "Phoenix Suns",
-    "POR": "Portland Trail Blazers",
-    "SAC": "Sacramento Kings",
-    "SAS": "San Antonio Spurs",
-    "TOR": "Toronto Raptors",
-    "UTA": "Utah Jazz",
-    "WAS": "Washington Wizards"
-}
 
 
 def get_gsheet():
@@ -123,17 +89,23 @@ def fetch_player_points_market(api_key, event_id, bookmaker_key):
 
 
 def fetch_all_today_player_props(api_key, bookmaker_key):
+    print("Fetching NBA events from Odds API...", flush=True)
     events = fetch_upcoming_nba_events(api_key)
+    print(f"Events found: {len(events)}", flush=True)
+
     rows = []
 
-    for event in events:
+    for event_idx, event in enumerate(events, start=1):
         event_id = event.get("id")
         if not event_id:
             continue
 
+        print(f"Reading event {event_idx}/{len(events)}: {event.get('away_team', '')} @ {event.get('home_team', '')}", flush=True)
+
         try:
             event_odds = fetch_player_points_market(api_key, event_id, bookmaker_key)
-        except Exception:
+        except Exception as e:
+            print(f"  Skipped event odds fetch: {e}", flush=True)
             continue
 
         home_team = event.get("home_team", "")
@@ -190,10 +162,12 @@ def fetch_all_today_player_props(api_key, bookmaker_key):
 
     df = pd.DataFrame(rows)
     df = df.drop_duplicates(subset=["player_name_raw", "line", "bookmaker"]).reset_index(drop=True)
+    print(f"Qualified prop rows collected before model scoring: {len(df)}", flush=True)
     return df
 
 
 def load_model():
+    print("Loading model...", flush=True)
     return joblib.load("models/points_regression.pkl")
 
 
@@ -203,23 +177,29 @@ def load_model_stats():
 
 
 def load_active_players():
+    print("Loading active players map...", flush=True)
     active_players = players.get_active_players()
     actual_name_to_id = {p["full_name"]: p["id"] for p in active_players}
     normalized_to_actual = {}
     for actual_name in actual_name_to_id.keys():
         normalized_to_actual[normalize_name(actual_name)] = actual_name
+    print(f"Active players mapped: {len(actual_name_to_id)}", flush=True)
     return actual_name_to_id, normalized_to_actual
 
 
 def get_player_gamelog_df(player_id, season):
-    try:
-        return playergamelog.PlayerGameLog(
-            player_id=player_id,
-            season=season,
-            timeout=12
-        ).get_data_frames()[0]
-    except Exception:
-        return pd.DataFrame()
+    for attempt in range(2):
+        try:
+            return playergamelog.PlayerGameLog(
+                player_id=player_id,
+                season=season,
+                timeout=12
+            ).get_data_frames()[0]
+        except Exception as e:
+            print(f"    Gamelog attempt {attempt + 1} failed: {e}", flush=True)
+            if attempt == 1:
+                return pd.DataFrame()
+            time.sleep(2)
 
 
 def build_player_feature_row(df, player_name):
@@ -349,11 +329,13 @@ def already_logged(records_df, player_name, game_date, sportsbook, line):
 
     return False
 
+
 def format_event_game_date(commence_time):
     try:
         return pd.to_datetime(commence_time, utc=True).tz_convert("US/Central").strftime("%B %d, %Y")
     except Exception:
         return pd.Timestamp.now(tz="US/Central").strftime("%B %d, %Y")
+
 
 def append_to_sheet(sheet, player_name, game_date, line, sportsbook, last_update, predicted_points, model_pick):
     col_a = sheet.col_values(1)
@@ -380,36 +362,44 @@ def main():
     odds_api_key = os.environ["ODDS_API_KEY"]
     model = load_model()
     model_stats = load_model_stats()
-    points_std = model_stats["std_dev"]
-
     actual_name_to_id, normalized_to_actual = load_active_players()
     model_feature_names = list(getattr(model, "feature_names_in_", []))
 
     props_df = fetch_all_today_player_props(odds_api_key, BOOKMAKER_KEY)
     if props_df.empty:
-        print("No props found.")
+        print("No props found.", flush=True)
         return
+
+    print(f"Props found for scoring: {len(props_df)}", flush=True)
 
     records_df, sheet = get_sheet_records_df()
     logged_count = 0
+    total_props = len(props_df)
 
-    for _, row in props_df.iterrows():
+    for i, (_, row) in enumerate(props_df.iterrows(), start=1):
+        print(f"Evaluating prop {i}/{total_props}: {row['player_name_raw']} | {row['bookmaker']} | {row['line']}", flush=True)
+
         normalized = normalize_name(row["player_name_raw"])
         actual_name = normalized_to_actual.get(normalized)
 
         if not actual_name:
+            print("  Skipped: no active player match", flush=True)
             continue
 
         player_id = actual_name_to_id.get(actual_name)
         if not player_id:
+            print("  Skipped: no player id found", flush=True)
             continue
 
+        print(f"  Pulling gamelog for {actual_name}", flush=True)
         df = get_player_gamelog_df(player_id, CURRENT_SEASON)
         if df.empty:
+            print("  Skipped: gamelog unavailable", flush=True)
             continue
 
         X = build_player_feature_row(df, actual_name)
         if X is None or X.empty:
+            print("  Skipped: not enough games to build features", flush=True)
             continue
 
         if model_feature_names:
@@ -418,16 +408,19 @@ def main():
         predicted_points = float(model.predict(X)[0])
         line = safe_float(row["line"])
         if line is None:
+            print("  Skipped: invalid line", flush=True)
             continue
 
         edge = predicted_points - line
         if abs(edge) < EDGE_THRESHOLD:
+            print(f"  Skipped: edge {edge:.2f} below threshold {EDGE_THRESHOLD}", flush=True)
             continue
 
         model_pick = "OVER" if predicted_points > line else "UNDER"
         game_date = format_event_game_date(row["commence_time"])
 
         if already_logged(records_df, actual_name, game_date, row["bookmaker"], line):
+            print("  Skipped: already logged", flush=True)
             continue
 
         append_to_sheet(
@@ -442,7 +435,7 @@ def main():
         )
 
         logged_count += 1
-        print(f"Logged: {actual_name} | {row['bookmaker']} | {line} | edge={edge:.2f}", flush=True)
+        print(f"  Logged: {actual_name} | {row['bookmaker']} | {line} | edge={edge:.2f}", flush=True)
         time.sleep(0.5)
 
     print(f"Done. Logged {logged_count} top plays.", flush=True)
