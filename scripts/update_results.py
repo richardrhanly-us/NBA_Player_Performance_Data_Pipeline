@@ -37,6 +37,13 @@ def normalize_sheet_date(value):
     except Exception:
         return str(value).strip()
 
+def is_past_game_date(value):
+    try:
+        game_date = pd.to_datetime(value).date()
+        today_central = pd.Timestamp.now(tz="US/Central").date()
+        return game_date < today_central
+    except Exception:
+        return False
 
 def get_sheet_records_df():
     sheet = get_gsheet()
@@ -111,6 +118,8 @@ def update_all_pending_sheet_results():
 
         player_name = str(row["PLAYER_NAME"]).strip()
         game_date = normalize_sheet_date(row["GAME_DATE"])
+        if not is_past_game_date(game_date):
+            continue
         line_val = safe_float(row["sportsbook_line"])
         predicted_val = safe_float(row["predicted_points"])
 
