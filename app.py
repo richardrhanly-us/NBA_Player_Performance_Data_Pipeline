@@ -197,15 +197,12 @@ st.markdown("""
         color: #f8fafc;
     }
 
-    /* tighten spacing under selectboxes */
     div[data-testid="stSelectbox"] {
-        margin-bottom: 6px !important;
+        margin-bottom: 4px !important;
     }
     
-    /* tighten sportsbook panel spacing */
     .sportsbook-compact {
-        margin-top: 6px !important;
-        margin-bottom: 10px !important;
+        margin-top: 4px !important;
     }
 
     .summary-strip {
