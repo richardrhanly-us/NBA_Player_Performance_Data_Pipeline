@@ -1627,6 +1627,7 @@ if selected_player:
         <div class="summary-item">
         <div class="summary-label">FGM / FGA</div>
         <div class="summary-value">{live_fgm} / {live_fga}</div>
+        </div>
         <div class="summary-item">
         <div class="summary-label">MIN</div>
         <div class="summary-value">{live_minutes}</div>
