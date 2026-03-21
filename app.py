@@ -631,6 +631,36 @@ from google.oauth2.service_account import Credentials
 import gspread
 from google.oauth2.service_account import Credentials
 
+def format_minutes_played(min_str):
+    if not min_str:
+        return "-"
+
+    try:
+        # handles "PT30M11.00S"
+        if "PT" in min_str:
+            min_str = min_str.replace("PT", "")
+            mins = 0
+            secs = 0
+
+            if "M" in min_str:
+                parts = min_str.split("M")
+                mins = int(parts[0])
+                min_str = parts[1]
+
+            if "S" in min_str:
+                secs = float(min_str.replace("S", ""))
+
+            return f"{mins}:{int(secs):02d}"
+
+        # fallback (sometimes comes as "12:34")
+        if ":" in min_str:
+            return min_str
+
+        return str(min_str)
+
+    except:
+        return "-"
+
 def get_gsheet():
     scope = [
         "https://www.googleapis.com/auth/spreadsheets",
@@ -1223,7 +1253,7 @@ if selected_player:
                     live_points = live_player_stats["pts"]
                     live_fgm = live_player_stats["fgm"]
                     live_fga = live_player_stats["fga"]
-                    live_minutes = live_player_stats["minutes"]
+                    live_minutes = format_minutes_played(live_player_stats["minutes"])
                     game_status = "Live now"
                 else:
                     live_debug = live_debug
