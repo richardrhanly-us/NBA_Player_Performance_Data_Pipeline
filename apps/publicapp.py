@@ -699,6 +699,7 @@ if selected_player:
         last5_avg = result.get("last5_avg")
         games_used = result.get("games_used")
         edge = result["edge"]
+        edge_text = "N/A" if edge is None else f"{edge:+.2f}"
         over_prob = result.get("over_prob")
         under_prob = result.get("under_prob")
 
@@ -770,7 +771,7 @@ if selected_player:
                         border: 1px solid {model_stat_border};
                     ">
                         <div class="model-stat-label" style="color: {model_label_color};">Model Edge</div>
-                        <div class="model-stat-value">{edge:+.2f if edge is not None else 'N/A'}</div>
+                        <div class="model-stat-value">{edge_text}</div>
                     </div>
 
                     <div class="model-stat" style="
