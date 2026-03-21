@@ -33,7 +33,7 @@ from nba_api.stats.endpoints import (
 # Google Sheets setup
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-@st.cache_data(ttl=20)
+@st.cache_data(ttl=8)
 def get_live_player_stats(game_id, player_id):
     try:
         box = run_with_retry(
@@ -41,28 +41,27 @@ def get_live_player_stats(game_id, player_id):
         )
         player_stats_df = box.player_stats.get_data_frame()
 
-        row = player_stats_df[player_stats_df["PLAYER_ID"] == player_id]
+        player_stats_df["PLAYER_ID"] = pd.to_numeric(
+            player_stats_df["PLAYER_ID"], errors="coerce"
+        )
+
+        row = player_stats_df[player_stats_df["PLAYER_ID"] == int(player_id)]
 
         if row.empty:
-            return {
-                "pts": 0,
-                "fgm": 0,
-                "fga": 0,
-                "minutes": "0"
-            }
+            return None
 
         row = row.iloc[0]
 
         return {
-            "pts": int(row["PTS"]),
-            "fgm": int(row["FGM"]),
-            "fga": int(row["FGA"]),
-            "minutes": str(row["MIN"])
+            "pts": int(row["PTS"]) if pd.notna(row["PTS"]) else 0,
+            "fgm": int(row["FGM"]) if pd.notna(row["FGM"]) else 0,
+            "fga": int(row["FGA"]) if pd.notna(row["FGA"]) else 0,
+            "minutes": str(row["MIN"]) if pd.notna(row["MIN"]) else "0"
         }
 
-    except Exception:
+    except Exception as e:
+        print("live player stats error:", e)
         return None
-
 
 
 @st.cache_resource
@@ -1171,7 +1170,7 @@ if selected_player:
 
             if is_live_game:
                 game_status = "Live now"
-                st_autorefresh(interval=20000, key=f"live_refresh_{live_game_id}")
+                st_autorefresh(interval=10000, key=f"live_refresh_{live_game_id}")
 
                 if live_game_id:
                     live_player_stats = get_live_player_stats(live_game_id, player_id)
@@ -1512,25 +1511,9 @@ if selected_player:
             f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Predicted Points</div><div class="model-stat-value">{predicted_points:.2f}</div></div>'
         ]
 
-        if live_points is not None:
-            model_cards.append(
-                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Current Points</div><div class="model-stat-value">{live_points}</div></div>'
-            )
 
-        if live_fgm is not None and live_fga is not None:
-            model_cards.append(
-                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">FGM / FGA</div><div class="model-stat-value">{live_fgm} / {live_fga}</div></div>'
-            )
 
-        if live_clock is not None:
-            model_cards.append(
-                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Time Remaining</div><div class="model-stat-value">{live_clock}</div></div>'
-            )
 
-        if live_minutes is not None:
-            model_cards.append(
-                f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Minutes Played</div><div class="model-stat-value">{live_minutes}</div></div>'
-            )
 
         model_cards.extend([
             f'<div class="model-stat" style="background: {model_stat_bg}; border: 1px solid {model_stat_border};"><div class="model-stat-label" style="color: {model_label_color};">Sportsbook Line</div><div class="model-stat-value">{f"{line:.1f}" if can_grade_edge else "No posted line"}</div></div>',
@@ -1552,7 +1535,7 @@ if selected_player:
         ])
         st.markdown(model_html, unsafe_allow_html=True)
 
-        st.markdown(f"""
+game_info_html = f"""
 <div class="section-card">
     <div class="section-title">Game Info</div>
     <div class="summary-strip">
@@ -1573,8 +1556,33 @@ if selected_player:
             <div class="summary-value">{game_time}</div>
         </div>
     </div>
-</div>
-""", unsafe_allow_html=True)
+"""
+
+if live_points is not None or live_clock is not None:
+    game_info_html += f"""
+    <div style="margin-top: 14px;" class="summary-strip">
+        <div class="summary-item">
+            <div class="summary-label">Live Points</div>
+            <div class="summary-value">{live_points if live_points is not None else "—"}</div>
+        </div>
+        <div class="summary-item">
+            <div class="summary-label">FGM / FGA</div>
+            <div class="summary-value">{f"{live_fgm} / {live_fga}" if live_fgm is not None and live_fga is not None else "—"}</div>
+        </div>
+        <div class="summary-item">
+            <div class="summary-label">Minutes Played</div>
+            <div class="summary-value">{live_minutes if live_minutes is not None else "—"}</div>
+        </div>
+        <div class="summary-item">
+            <div class="summary-label">Game Clock</div>
+            <div class="summary-value">{live_clock if live_clock is not None else "—"}</div>
+        </div>
+    </div>
+    """
+
+game_info_html += "</div>"
+
+st.markdown(game_info_html, unsafe_allow_html=True)
 
         update_text = book_updated if book_updated else "N/A"
 
