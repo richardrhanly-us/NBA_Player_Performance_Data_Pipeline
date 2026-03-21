@@ -578,7 +578,14 @@ def get_gsheet():
 
 def append_to_sheet(player_name, game_date, line, sportsbook, last_update, predicted_points="", model_pick=""):
     sheet = get_gsheet()
-    sheet.append_row([
+
+    # Look at column A only to find the next real data row.
+    col_a = sheet.col_values(1)
+
+    # Row 1 is the header. Next writable row is first empty row in column A.
+    next_row = len(col_a) + 1
+
+    values = [[
         player_name,
         str(game_date),
         float(line),
@@ -590,7 +597,9 @@ def append_to_sheet(player_name, game_date, line, sportsbook, last_update, predi
         model_pick,
         "",
         ""
-    ])
+    ]]
+
+    sheet.update(f"A{next_row}:K{next_row}", values)
 
 
 def safe_float(value):
