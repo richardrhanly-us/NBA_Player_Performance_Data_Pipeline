@@ -22,7 +22,6 @@ from src.shared_app import (
     get_player_info_df,
     build_player_feature_row,
     get_live_player_stats,
-    get_team_game_info,
 )
 
 
