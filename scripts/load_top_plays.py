@@ -181,7 +181,8 @@ def fetch_all_today_player_props(api_key, bookmaker_key):
                         "bookmaker": book_title,
                         "last_update": market_last_update,
                         "home_team": home_team,
-                        "away_team": away_team
+                        "away_team": away_team,
+                        "commence_time": event.get("commence_time", "")
                     })
 
     if not rows:
@@ -348,6 +349,11 @@ def already_logged(records_df, player_name, game_date, sportsbook, line):
 
     return False
 
+def format_event_game_date(commence_time):
+    try:
+        return pd.to_datetime(commence_time, utc=True).tz_convert("US/Central").strftime("%B %d, %Y")
+    except Exception:
+        return pd.Timestamp.now(tz="US/Central").strftime("%B %d, %Y")
 
 def append_to_sheet(sheet, player_name, game_date, line, sportsbook, last_update, predicted_points, model_pick):
     col_a = sheet.col_values(1)
@@ -419,7 +425,7 @@ def main():
             continue
 
         model_pick = "OVER" if predicted_points > line else "UNDER"
-        game_date = pd.Timestamp.now().strftime("%B %d, %Y")
+        game_date = format_event_game_date(row["commence_time"])
 
         if already_logged(records_df, actual_name, game_date, row["bookmaker"], line):
             continue
