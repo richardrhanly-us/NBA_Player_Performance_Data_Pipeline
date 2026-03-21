@@ -321,13 +321,29 @@ if not odds_api_key:
     st.warning("ODDS_API_KEY not found in environment.")
 else:
     try:
-        with st.spinner("Building top plays board..."):
-            top_plays_df = get_top_plays_today_df(odds_api_key)
+        loading_box = st.empty()
+
+        with loading_box.container():
+            st.markdown(
+                """
+                <div class="metric-box">
+                    <div class="metric-label">Loading Top Plays</div>
+                    <div class="metric-value">Finding today’s strongest edges...</div>
+                    <div class="muted">Comparing sportsbook lines against recent player performance</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        top_plays_df = get_top_plays_today_df(odds_api_key)
+
+        loading_box.empty()
 
         if top_plays_df is None or top_plays_df.empty:
             st.info("No top plays available right now.")
         else:
             st.dataframe(top_plays_df, use_container_width=True, height=360)
+
     except Exception as e:
         st.error(f"Could not build top plays board: {e}")
 
