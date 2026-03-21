@@ -10,6 +10,7 @@ import unicodedata
 import gspread
 from nba_api.stats.endpoints import boxscoretraditionalv2
 from streamlit_autorefresh import st_autorefresh
+from nba_api.live.nba.endpoints import boxscore as live_boxscore
 
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
@@ -33,47 +34,62 @@ from nba_api.stats.endpoints import (
 # Google Sheets setup
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-
 def get_live_player_stats(game_id, player_id, player_name):
     try:
-        box = run_with_retry(
-            lambda: boxscoretraditionalv2.BoxScoreTraditionalV2(game_id=str(game_id))
+        live = live_boxscore.BoxScore(game_id=str(game_id))
+        data = live.get_dict()
+
+        players = []
+
+        home_players = (
+            data.get("game", {})
+            .get("homeTeam", {})
+            .get("players", [])
         )
-        df = box.player_stats.get_data_frame().copy()
+        away_players = (
+            data.get("game", {})
+            .get("awayTeam", {})
+            .get("players", [])
+        )
 
-        if df.empty:
-            return None, "box score came back empty"
+        players.extend(home_players)
+        players.extend(away_players)
 
-        debug_cols = [c for c in ["PLAYER_ID", "PLAYER_NAME", "PTS", "FGM", "FGA", "MIN"] if c in df.columns]
+        if not players:
+            return None, "live box score returned no players"
 
-        if "PLAYER_ID" in df.columns:
-            df["PLAYER_ID"] = pd.to_numeric(df["PLAYER_ID"], errors="coerce")
+        matched = None
 
-        row = pd.DataFrame()
+        for p in players:
+            if str(p.get("personId", "")) == str(player_id):
+                matched = p
+                break
 
-        if "PLAYER_ID" in df.columns:
-            row = df[df["PLAYER_ID"] == int(player_id)]
+        if matched is None:
+            for p in players:
+                full_name = f"{p.get('firstName', '').strip()} {p.get('familyName', '').strip()}".strip()
+                if full_name.lower() == player_name.lower():
+                    matched = p
+                    break
 
-        if row.empty and "PLAYER_NAME" in df.columns:
-            row = df[df["PLAYER_NAME"].astype(str).str.strip().str.lower() == player_name.strip().lower()]
+        if matched is None:
+            sample_names = [
+                f"{p.get('firstName', '').strip()} {p.get('familyName', '').strip()}".strip()
+                for p in players[:15]
+            ]
+            return None, f"no live player match | names={sample_names}"
 
-        if row.empty:
-            sample_names = []
-            if "PLAYER_NAME" in df.columns:
-                sample_names = df["PLAYER_NAME"].astype(str).tolist()[:15]
-            return None, f"no player row match | game_id={game_id} | player_id={player_id} | names={sample_names}"
+        stats = matched.get("statistics", {})
 
-        row = row.iloc[0]
-
-        pts = pd.to_numeric(row.get("PTS"), errors="coerce")
-        fgm = pd.to_numeric(row.get("FGM"), errors="coerce")
-        fga = pd.to_numeric(row.get("FGA"), errors="coerce")
-        minutes = row.get("MIN", "0")
+        pts = stats.get("points", 0)
+        fgm = stats.get("fieldGoalsMade", 0)
+        fga = stats.get("fieldGoalsAttempted", 0)
+        minutes = stats.get("minutes", "0")
 
         return {
-            "pts": int(pts) if pd.notna(pts) else 0,
-            "fgm": int(fgm) if pd.notna(fgm) else 0,
-            "fga": int(fga) if pd.notna(fga) else 0,
+            "pts": int(pts) if str(pts).strip() != "" else 0,
+            "fgm": int(fgm) if str(fgm).strip() != "" else 0,
+            "fga": int(fga) if str(fga).strip() != "" else 0,
             "minutes": str(minutes)
         }, None
 
