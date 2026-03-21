@@ -33,19 +33,17 @@ from nba_api.stats.endpoints import (
 # Google Sheets setup
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-@st.cache_data(ttl=8)
+
 def get_live_player_stats(game_id, player_id):
     try:
-        box = run_with_retry(
-            lambda: boxscoretraditionalv2.BoxScoreTraditionalV2(game_id=game_id)
-        )
-        player_stats_df = box.player_stats.get_data_frame()
+        box = boxscoretraditionalv2.BoxScoreTraditionalV2(game_id=game_id)
+        df = box.player_stats.get_data_frame()
 
-        player_stats_df["PLAYER_ID"] = pd.to_numeric(
-            player_stats_df["PLAYER_ID"], errors="coerce"
-        )
+        # 🔥 normalize types
+        df["PLAYER_ID"] = df["PLAYER_ID"].astype(int)
 
-        row = player_stats_df[player_stats_df["PLAYER_ID"] == int(player_id)]
+        # 🔥 debug fallback: match by name if needed
+        row = df[df["PLAYER_ID"] == int(player_id)]
 
         if row.empty:
             return None
@@ -53,14 +51,14 @@ def get_live_player_stats(game_id, player_id):
         row = row.iloc[0]
 
         return {
-            "pts": int(row["PTS"]) if pd.notna(row["PTS"]) else 0,
-            "fgm": int(row["FGM"]) if pd.notna(row["FGM"]) else 0,
-            "fga": int(row["FGA"]) if pd.notna(row["FGA"]) else 0,
-            "minutes": str(row["MIN"]) if pd.notna(row["MIN"]) else "0"
+            "pts": int(row["PTS"]),
+            "fgm": int(row["FGM"]),
+            "fga": int(row["FGA"]),
+            "minutes": str(row["MIN"])
         }
 
     except Exception as e:
-        print("live player stats error:", e)
+        print("LIVE STAT ERROR:", e)
         return None
 
 
@@ -1152,7 +1150,6 @@ if selected_player:
         live_fgm = None
         live_fga = None
         live_minutes = None
-        live_clock = None
 
         if today_game_info:
             matchup = today_game_info["matchup"]
@@ -1180,7 +1177,6 @@ if selected_player:
                         live_fga = live_player_stats["fga"]
                         live_minutes = live_player_stats["minutes"]
 
-                    _, live_clock = get_live_game_stats(live_game_id, team_abbr)
 
             elif is_final_game:
                 game_status = "Final"
@@ -1558,24 +1554,20 @@ if selected_player:
             </div>
         """
         
-        if live_points is not None or live_clock is not None:
+        if live_points is not None:
             game_info_html += f"""
-        <div style="margin-top: 14px;" class="summary-strip">
+        <div class="summary-strip" style="margin-top: 14px;">
         <div class="summary-item">
         <div class="summary-label">Live Points</div>
-        <div class="summary-value">{live_points if live_points is not None else "—"}</div>
+        <div class="summary-value">{live_points}</div>
         </div>
         <div class="summary-item">
         <div class="summary-label">FGM / FGA</div>
-        <div class="summary-value">{f"{live_fgm} / {live_fga}" if live_fgm is not None and live_fga is not None else "—"}</div>
+        <div class="summary-value">{live_fgm} / {live_fga}</div>
         </div>
         <div class="summary-item">
         <div class="summary-label">Minutes Played</div>
-        <div class="summary-value">{live_minutes if live_minutes is not None else "—"}</div>
-        </div>
-        <div class="summary-item">
-        <div class="summary-label">Game Clock</div>
-        <div class="summary-value">{live_clock if live_clock is not None else "—"}</div>
+        <div class="summary-value">{live_minutes}</div>
         </div>
         </div>
         """
