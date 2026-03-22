@@ -1051,35 +1051,27 @@ with operations_tab:
                         sportsbook_line=item["sportsbook_line"],
                     )
 
-                    write_admin_log(
-                        action="manual_queue_load",
-                        source="admin_manual",
-                        status="success",
-                        details=(
-                            f"{result['player_name']} | "
-                            f"{result['sportsbook']} {result['sportsbook_line']} | "
-                            f"Pred {result['predicted_points']} | "
-                            f"{result['model_pick']} | Edge {result['edge']} | "
-                            f"Row {result['sheet_row']}"
-                        )
                     )
 
                     loaded_count += 1
 
                 except Exception as e:
                     failed_items.append(f"{item['player_name']} | {item['sportsbook']} {item['sportsbook_line']} | {e}")
-                    write_admin_log(
-                        action="manual_queue_load",
-                        source="admin_manual",
-                        status="failed",
-                        details=f"{item['player_name']} | {e}"
-                    )
 
                 progress_bar.progress(idx / total_items)
-                time.sleep(0.75)
+                time.sleep(0.1.25)
 
             st.session_state.manual_add_queue = []
             st.cache_data.clear()
+            write_admin_log(
+                action="manual_queue_load",
+                source="admin_manual",
+                status="success" if not failed_items else "partial",
+                details=(
+                    f"Queued load finished | loaded={loaded_count} | "
+                    f"failed={len(failed_items)} | total={total_items}"
+                )
+            )
 
             if failed_items:
                 status_placeholder.warning(
