@@ -554,7 +554,7 @@ with operations_tab:
             )
 
     with row2_col2:
-        if st.button("Refresh App State", use_container_width=True):
+        if st.button("🔄 Refresh App State", use_container_width=True):
             try:
                 st.cache_data.clear()
                 st.cache_resource.clear()
