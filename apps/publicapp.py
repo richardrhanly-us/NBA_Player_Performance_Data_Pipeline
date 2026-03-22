@@ -587,7 +587,25 @@ def format_game_clock(clock_value):
         return text
 
 
-def format_game_status_short(status):
+def format_game_status_short(status, live_stats=None):
+    if live_stats:
+        period = live_stats.get("period")
+        if period is not None:
+            try:
+                period = int(period)
+                if period == 1:
+                    return "Q1"
+                if period == 2:
+                    return "Q2"
+                if period == 3:
+                    return "Q3"
+                if period == 4:
+                    return "Q4"
+                if period >= 5:
+                    return f"OT{period - 4}" if period > 5 else "OT"
+            except Exception:
+                pass
+
     if not status:
         return "Live"
 
@@ -601,7 +619,7 @@ def format_game_status_short(status):
         return "Q3"
     if "4th" in text or "q4" in text:
         return "Q4"
-    if "half" in text:
+    if "half" in text or "halftime" in text:
         return "HALF"
     if "final" in text:
         return "FINAL"
@@ -1242,7 +1260,7 @@ if selected_player:
                 )
 
             with live_col3:
-                game_status = format_game_status_short(live_stats.get("game_status"))
+                game_status = format_game_status_short(live_stats.get("game_status"), live_stats)
                 game_clock = format_game_clock(live_stats.get("game_clock"))
 
                 st.markdown(
