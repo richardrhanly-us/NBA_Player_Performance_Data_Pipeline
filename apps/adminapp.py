@@ -957,6 +957,37 @@ with operations_tab:
                     scan_df = scan_df.dropna(subset=["player_name_raw", "line"]).copy()
                     scan_df["player_name_raw"] = scan_df["player_name_raw"].astype(str).str.strip()
 
+                    # Save today's lines to historical_lines.csv
+                    HISTORICAL_FILE = os.path.abspath(
+                        os.path.join(os.path.dirname(__file__), "..", "historical_lines.csv")
+                    )
+
+                    today_lines = scan_df.copy()
+                    today_lines = today_lines.rename(columns={
+                        "player_name_raw": "PLAYER_NAME",
+                        "line": "sportsbook_line",
+                    })
+
+                    today_lines["PLAYER_NAME"] = today_lines["PLAYER_NAME"].astype(str).str.strip()
+                    today_lines["GAME_DATE"] = datetime.now(ZoneInfo("America/Chicago")).date()
+
+                    today_lines = today_lines[["PLAYER_NAME", "GAME_DATE", "sportsbook_line"]].copy()
+
+                    if os.path.exists(HISTORICAL_FILE):
+                        historical = pd.read_csv(HISTORICAL_FILE)
+                        if not historical.empty:
+                            historical["PLAYER_NAME"] = historical["PLAYER_NAME"].astype(str).str.strip()
+                            historical["GAME_DATE"] = pd.to_datetime(historical["GAME_DATE"], errors="coerce").dt.date
+                        combined = pd.concat([historical, today_lines], ignore_index=True)
+                    else:
+                        combined = today_lines.copy()
+
+                    combined = combined.dropna(subset=["PLAYER_NAME", "GAME_DATE", "sportsbook_line"]).copy()
+                    combined = combined.drop_duplicates(
+                        subset=["PLAYER_NAME", "GAME_DATE", "sportsbook_line"]
+                    ).reset_index(drop=True)
+
+                    combined.to_csv(HISTORICAL_FILE, index=False)
                     scan_df = scan_df.sort_values(
                         by=["player_name_raw", "last_update"],
                         ascending=[True, False]
