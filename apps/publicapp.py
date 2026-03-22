@@ -1356,31 +1356,7 @@ model_card_html = f"""
 """
 
 
-<div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
-<div class="model-stat-label" style="color:{model_label_color};">Sportsbook Line</div>
-<div class="model-stat-value">{sportsbook_line:.1f}</div>
-</div>
 
-<div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
-<div class="model-stat-label" style="color:{model_label_color};">Model Edge</div>
-<div class="model-stat-value">{edge_text}</div>
-</div>
-
-<div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
-<div class="model-stat-label" style="color:{model_label_color};">Probability Split</div>
-<div class="model-stat-value">{probability_text}</div>
-</div>
-</div>
-
-<div class="small-note">{interpretation_text}</div>
-
-<div class="pick-banner" style="background:{pick_bg};border:2px solid {pick_border};color:{pick_text_color};">
-{pick_text}
-</div>
-
-<div class="small-note">Trained regression model output compared against the current sportsbook line.</div>
-</div>
-"""
         st.markdown(model_card_html, unsafe_allow_html=True)
 
         if live_stats and base_predicted_points is not None:
