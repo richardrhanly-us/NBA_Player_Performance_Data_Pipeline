@@ -21,6 +21,7 @@ from src.shared_app import (
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 SHEET_KEY = "1uhjV_Si-qcILfNJbKZrD52y4JnT_GvqQ0hzN7POekQM"
 ADMIN_LOG_SHEET_NAME = "Admin Logs"
+USAGE_LOG_SHEET_NAME = "Usage Log"
 
 
 st.set_page_config(
@@ -215,6 +216,91 @@ def get_admin_logs_df():
     rows = values[1:]
     return pd.DataFrame(rows, columns=headers)
 
+def get_usage_log_sheet():
+    client = get_gsheet_client()
+    workbook = client.open_by_key(SHEET_KEY)
+    return workbook.worksheet(USAGE_LOG_SHEET_NAME)
+
+
+def get_usage_logs_df():
+    ws = get_usage_log_sheet()
+    values = ws.get_all_values()
+
+    if not values or len(values) < 2:
+        return pd.DataFrame(
+            columns=["timestamp", "event_type", "session_id", "player_name", "sportsbook", "details"]
+        )
+
+    headers = values[0]
+    rows = values[1:]
+    return pd.DataFrame(rows, columns=headers)
+
+
+def build_usage_summary(logs_df):
+    if logs_df.empty:
+        return {
+            "page_views": 0,
+            "unique_sessions": 0,
+            "searches": 0,
+            "top_play_clicks": 0,
+            "top_players": pd.DataFrame(),
+            "top_books": pd.DataFrame(),
+        }
+
+    working_df = logs_df.copy()
+
+    if "event_type" in working_df.columns:
+        working_df["event_type"] = working_df["event_type"].astype(str).str.strip()
+
+    if "session_id" in working_df.columns:
+        working_df["session_id"] = working_df["session_id"].astype(str).str.strip()
+
+    if "player_name" in working_df.columns:
+        working_df["player_name"] = working_df["player_name"].astype(str).str.strip()
+
+    if "sportsbook" in working_df.columns:
+        working_df["sportsbook"] = working_df["sportsbook"].astype(str).str.strip().str.lower()
+
+    page_views = len(working_df[working_df["event_type"] == "page_view"])
+    searches = len(working_df[working_df["event_type"] == "search"])
+    top_play_clicks = len(working_df[working_df["event_type"] == "top_play_click"])
+
+    unique_sessions = 0
+    if "session_id" in working_df.columns:
+        unique_sessions = working_df["session_id"].replace("", pd.NA).dropna().nunique()
+
+    top_players = pd.DataFrame()
+    search_df = working_df[working_df["event_type"] == "search"].copy()
+    if not search_df.empty and "player_name" in search_df.columns:
+        top_players = (
+            search_df[search_df["player_name"] != ""]
+            .groupby("player_name")
+            .size()
+            .reset_index(name="search_count")
+            .sort_values("search_count", ascending=False)
+            .head(10)
+        )
+
+    top_books = pd.DataFrame()
+    if not search_df.empty and "sportsbook" in search_df.columns:
+        top_books = (
+            search_df[search_df["sportsbook"] != ""]
+            .groupby("sportsbook")
+            .size()
+            .reset_index(name="search_count")
+            .sort_values("search_count", ascending=False)
+            .head(10)
+        )
+
+    return {
+        "page_views": page_views,
+        "unique_sessions": unique_sessions,
+        "searches": searches,
+        "top_play_clicks": top_play_clicks,
+        "top_players": top_players,
+        "top_books": top_books,
+    }
+
 
 def load_strong_plays_df():
     sheet = get_strong_plays_sheet()
@@ -353,6 +439,113 @@ else:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
+st.markdown('<div class="section-card"><div class="section-title">Usage Metrics</div>', unsafe_allow_html=True)
+
+try:
+    usage_logs_df = get_usage_logs_df()
+    usage_summary = build_usage_summary(usage_logs_df)
+
+    metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+
+    with metric_col1:
+        st.markdown(
+            f"""
+            <div class="status-box">
+                <div class="mini-label">Total Page Views</div>
+                <div class="mini-value">{usage_summary['page_views']}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    with metric_col2:
+        st.markdown(
+            f"""
+            <div class="status-box">
+                <div class="mini-label">Unique Sessions</div>
+                <div class="mini-value">{usage_summary['unique_sessions']}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    with metric_col3:
+        st.markdown(
+            f"""
+            <div class="status-box">
+                <div class="mini-label">Total Searches</div>
+                <div class="mini-value">{usage_summary['searches']}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    with metric_col4:
+        st.markdown(
+            f"""
+            <div class="status-box">
+                <div class="mini-label">Top Play Clicks</div>
+                <div class="mini-value">{usage_summary['top_play_clicks']}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    subcol1, subcol2 = st.columns(2)
+
+    with subcol1:
+        st.markdown("##### Most Searched Players")
+        if usage_summary["top_players"].empty:
+            st.info("No search data yet.")
+        else:
+            st.dataframe(
+                usage_summary["top_players"],
+                use_container_width=True,
+                hide_index=True,
+                height=260
+            )
+
+    with subcol2:
+        st.markdown("##### Most Used Sportsbooks")
+        if usage_summary["top_books"].empty:
+            st.info("No sportsbook data yet.")
+        else:
+            st.dataframe(
+                usage_summary["top_books"],
+                use_container_width=True,
+                hide_index=True,
+                height=260
+            )
+
+    st.markdown("##### Recent Usage Events")
+    if usage_logs_df.empty:
+        st.info("No usage log events yet.")
+    else:
+        recent_usage_df = usage_logs_df.copy()
+
+        preferred_cols = [
+            "timestamp",
+            "event_type",
+            "session_id",
+            "player_name",
+            "sportsbook",
+            "details",
+        ]
+        existing_cols = [col for col in preferred_cols if col in recent_usage_df.columns]
+        if existing_cols:
+            recent_usage_df = recent_usage_df[existing_cols]
+
+        st.dataframe(
+            recent_usage_df.tail(50).iloc[::-1],
+            use_container_width=True,
+            hide_index=True,
+            height=320
+        )
+
+except Exception as e:
+    st.error(f"Could not load usage metrics: {e}")
+
+st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('<div class="section-card"><div class="section-title">Admin Tools</div>', unsafe_allow_html=True)
 
