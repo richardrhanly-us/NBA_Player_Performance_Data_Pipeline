@@ -524,13 +524,15 @@ def process_prop_row(
 
     return (scored_row, append_payload), "success"
 
-
 def main():
     print("[TOP PLAYS] ===== START WORKFLOW =====", flush=True)
+
     odds_api_key = os.environ["ODDS_API_KEY"]
+
     events = fetch_upcoming_nba_events(odds_api_key)
     event_count = len(events)
     print(f"[TOP PLAYS] Events found: {event_count}", flush=True)
+
     model = load_model()
     load_model_stats()
     actual_name_to_id, normalized_to_actual = load_active_players()
@@ -539,15 +541,18 @@ def main():
     props_df = fetch_all_today_player_props(odds_api_key, BOOKMAKER_KEY)
     props_count = len(props_df)
     print(f"[TOP PLAYS] Props found: {props_count}", flush=True)
+
     if props_df.empty:
-        print("No props found.", flush=True)
-        update_top_plays_live_sheet(pd.DataFrame())
+        print("[TOP PLAYS] No props found.", flush=True)
+        rows_written = update_top_plays_live_sheet(pd.DataFrame())
+        print(
+            f"[TOP PLAYS] DONE | events={event_count} | props={props_count} | "
+            f"scored=0 | final={rows_written} | appended=0",
+            flush=True,
+        )
         return
 
-    print(f"Props found for scoring: {len(props_df)}", flush=True)
-
     records_df, sheet = get_sheet_records_df()
-    logged_count = 0
     total_props = len(props_df)
 
     gamelog_cache = {}
@@ -579,38 +584,8 @@ def main():
         if not result:
             continue
 
-        scored_row, append_payload = result
+        scored_row, _ = result
         add_scored_row(scored_map, scored_row)
-
-        if already_logged(
-            records_df,
-            append_payload["player_name"],
-            append_payload["game_date"],
-            append_payload["sportsbook"],
-            append_payload["line"],
-        ):
-            print("  Skipped: already logged", flush=True)
-            continue
-
-        append_to_sheet(
-            sheet=sheet,
-            player_name=append_payload["player_name"],
-            game_date=append_payload["game_date"],
-            line=append_payload["line"],
-            sportsbook=append_payload["sportsbook"],
-            last_update=append_payload["last_update"],
-            predicted_points=append_payload["predicted_points"],
-            model_pick=append_payload["model_pick"],
-        )
-
-        logged_count += 1
-        print(
-            f"  Logged: {append_payload['player_name']} | "
-            f"{append_payload['sportsbook']} | {append_payload['line']} | "
-            f"edge={append_payload['edge']:.2f}",
-            flush=True,
-        )
-        time.sleep(0.5)
 
     if retry_rows:
         print(f"Starting retry pass for {len(retry_rows)} queued props...", flush=True)
@@ -637,54 +612,71 @@ def main():
                     print("  Retry failed: gamelog still unavailable", flush=True)
                 continue
 
-            scored_row, append_payload = result
+            scored_row, _ = result
             add_scored_row(scored_map, scored_row)
-
-            if already_logged(
-                records_df,
-                append_payload["player_name"],
-                append_payload["game_date"],
-                append_payload["sportsbook"],
-                append_payload["line"],
-            ):
-                print("  Retry skipped: already logged", flush=True)
-                continue
-
-            append_to_sheet(
-                sheet=sheet,
-                player_name=append_payload["player_name"],
-                game_date=append_payload["game_date"],
-                line=append_payload["line"],
-                sportsbook=append_payload["sportsbook"],
-                last_update=append_payload["last_update"],
-                predicted_points=append_payload["predicted_points"],
-                model_pick=append_payload["model_pick"],
-            )
-
-            logged_count += 1
-            print(
-                f"  Retry logged: {append_payload['player_name']} | "
-                f"{append_payload['sportsbook']} | {append_payload['line']} | "
-                f"edge={append_payload['edge']:.2f}",
-                flush=True,
-            )
-            time.sleep(0.5)
 
     scored_count = len(scored_map)
     print(f"[TOP PLAYS] Scored rows: {scored_count}", flush=True)
+
     top_df = build_top_plays_live_df(scored_map)
 
     if top_df.empty:
         print("[TOP PLAYS] No qualifying top plays after filters", flush=True)
         rows_written = update_top_plays_live_sheet(pd.DataFrame())
-    else:
-        print(f"[TOP PLAYS] Final top plays: {len(top_df)}", flush=True)
-        rows_written = update_top_plays_live_sheet(top_df)
-    
+        print(
+            f"[TOP PLAYS] DONE | events={event_count} | props={props_count} | "
+            f"scored={scored_count} | final={rows_written} | appended=0",
+            flush=True,
+        )
+        return
+
+    print(f"[TOP PLAYS] Final top plays: {len(top_df)}", flush=True)
+    rows_written = update_top_plays_live_sheet(top_df)
+
+    appended_count = 0
+
+    for _, row in top_df.iterrows():
+        player_name = row["PLAYER_NAME"]
+        sportsbook = row["sportsbook"]
+        line = row["sportsbook_line"]
+        predicted_points = row["predicted_points"]
+        model_pick = row["model_pick"]
+        last_update = row.get("last_update", "")
+        edge = row.get("edge", 0)
+
+        game_date = datetime.now().strftime("%B %d, %Y")
+
+        if already_logged(records_df, player_name, game_date, sportsbook, line):
+            print(
+                f"[TOP PLAYS] Already in Sheet1, skipping append: "
+                f"{player_name} | {sportsbook} | {line}",
+                flush=True,
+            )
+            continue
+
+        append_to_sheet(
+            sheet=sheet,
+            player_name=player_name,
+            game_date=game_date,
+            line=line,
+            sportsbook=sportsbook,
+            last_update=last_update,
+            predicted_points=predicted_points,
+            model_pick=model_pick,
+        )
+
+        appended_count += 1
+        print(
+            f"[TOP PLAYS] Appended to Sheet1: "
+            f"{player_name} | {sportsbook} | {line} | edge={edge:.2f}",
+            flush=True,
+        )
+        time.sleep(0.5)
+
     print(
         f"[TOP PLAYS] DONE | events={event_count} | props={props_count} | "
-        f"scored={scored_count} | final={rows_written} | logged={logged_count}",
-        flush=True
+        f"scored={scored_count} | final={rows_written} | appended={appended_count}",
+        flush=True,
     )
 
 
