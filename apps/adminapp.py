@@ -200,7 +200,7 @@ def format_last_update(value):
         return str(value)
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=5)
 def get_admin_logs_df():
     try:
         ws = ensure_admin_log_sheet()
@@ -208,18 +208,38 @@ def get_admin_logs_df():
 
         expected_cols = ["timestamp", "action", "source", "status", "details"]
 
-        if not values or len(values) < 2:
+        if not values:
             return pd.DataFrame(columns=expected_cols)
 
         headers = [str(h).strip() for h in values[0]]
+
+        if len(values) == 1:
+            return pd.DataFrame(columns=headers if headers else expected_cols)
+
         rows = values[1:]
-        df = pd.DataFrame(rows, columns=headers)
+
+        cleaned_rows = []
+        for row in rows:
+            row = list(row)
+            if len(row) < len(headers):
+                row = row + [""] * (len(headers) - len(row))
+            elif len(row) > len(headers):
+                row = row[:len(headers)]
+            cleaned_rows.append(row)
+
+        df = pd.DataFrame(cleaned_rows, columns=headers)
 
         for col in expected_cols:
             if col not in df.columns:
                 df[col] = ""
 
-        return df[expected_cols]
+        df = df[expected_cols].copy()
+
+        df = df[
+            ~(df["timestamp"].astype(str).str.strip() == "")
+        ].copy()
+
+        return df
 
     except Exception as e:
         print(f"[ERROR] get_admin_logs_df failed: {e}")
@@ -960,10 +980,20 @@ with logs_tab:
 
     logs_df = get_admin_logs_df()
 
+    if st.button("Refresh Admin Logs"):
+        st.cache_data.clear()
+        st.rerun()
+    
     if logs_df.empty:
         st.info("No admin logs yet.")
     else:
-        st.dataframe(logs_df.tail(25).iloc[::-1], use_container_width=True, hide_index=True)
+        display_logs_df = logs_df.copy()
+        st.dataframe(
+            display_logs_df.tail(50).iloc[::-1],
+            use_container_width=True,
+            hide_index=True,
+            height=420
+        )
 
     if st.button("Test Admin Log"):
         write_admin_log(
