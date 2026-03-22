@@ -801,7 +801,6 @@ try:
             pred_text = f"{pred_val:.2f}" if pd.notna(pred_val) else "N/A"
             edge_text = f"{edge_val:+.2f}" if pd.notna(edge_val) else "N/A"
 
-            st.markdown('<div class="section-card"><div class="section-title">Top Plays Today</div>', unsafe_allow_html=True)
             st.markdown(
                 f"""
                 <div class="top-play-card">
@@ -812,7 +811,7 @@ try:
                 """,
                 unsafe_allow_html=True
             )
-
+st.markdown('<div class="section-card"><div class="section-title">Top Plays Today</div>', unsafe_allow_html=True)
         display_cols = [
             col for col in [
                 "PLAYER_NAME",
