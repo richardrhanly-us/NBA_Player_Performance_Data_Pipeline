@@ -181,7 +181,7 @@ def append_manual_play_to_sheet1(player_name, sportsbook_key, sportsbook_line=No
         actual_name,
         game_date,
         sportsbook_line,
-        sportsbook_key,
+        "DraftKings" if sportsbook_key.lower() == "draftkings" else sportsbook_key.title(),,
         last_update,
         round(predicted_points, 2),
         "",
