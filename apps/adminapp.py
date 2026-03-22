@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 import pandas as pd
 import streamlit as st
 from datetime import datetime
@@ -639,6 +640,9 @@ with operations_tab:
 
     status_placeholder = st.empty()
 
+    if "manual_add_queue" not in st.session_state:
+        st.session_state.manual_add_queue = []
+
     if "last_operations_debug" not in st.session_state:
         st.session_state.last_operations_debug = None
 
@@ -922,84 +926,169 @@ with operations_tab:
             else:
                 st.dataframe(row_debug_df, use_container_width=True, hide_index=True, height=350)
 
+    
     st.markdown("### Manual Add to Sheet1")
 
-    actual_name_to_id, _ = load_active_players()
-    admin_player_names = sorted(actual_name_to_id.keys())
     sportsbook_options = get_available_sportsbooks()
 
-    manual_col1, manual_col2, manual_col3 = st.columns([2, 1, 1])
+    scan_col1, scan_col2, scan_col3 = st.columns([1, 1, 1])
 
-    with manual_col1:
-        manual_player = st.selectbox(
-            "Player",
-            options=admin_player_names,
-            index=None,
-            placeholder="Search player...",
-            key="admin_manual_player"
-        )
-
-    with manual_col2:
-        manual_sportsbook = st.selectbox(
+    with scan_col1:
+        queue_sportsbook = st.selectbox(
             "Sportsbook",
             options=sportsbook_options,
             index=0,
-            key="admin_manual_sportsbook"
+            key="queue_sportsbook"
         )
 
-    with manual_col3:
-        manual_line_override = st.text_input(
-            "Line (optional)",
-            value="",
-            key="admin_manual_line_override"
-        )
-
-    if st.button("➕ Add to Sheet1", use_container_width=True):
-        if not manual_player:
-            status_placeholder.warning("Select a player first.")
-        else:
+    with scan_col2:
+        if st.button("🔎 Scan Today's Lines to Queue", use_container_width=True):
             try:
-                line_override = None
-                if manual_line_override.strip() != "":
-                    line_override = float(manual_line_override.strip())
+                odds_api_key = st.secrets["ODDS_API_KEY"]
+                props_df = shared_app.fetch_all_today_player_props(odds_api_key, queue_sportsbook)
 
-                result = shared_app.append_manual_play_to_sheet1(
-                    player_name=manual_player,
-                    sportsbook_key=manual_sportsbook,
-                    sportsbook_line=line_override,
-                )
+                if props_df is None or props_df.empty:
+                    status_placeholder.warning("No players with lines found for today's games.")
+                else:
+                    scan_df = props_df.copy()
 
-                write_admin_log(
-                    action="manual_add_to_sheet1",
-                    source="admin_manual",
-                    status="success",
-                    details=(
-                        f"{result['player_name']} | "
-                        f"{result['sportsbook']} {result['sportsbook_line']} | "
-                        f"Pred {result['predicted_points']} | "
-                        f"{result['model_pick']} | Edge {result['edge']} | "
-                        f"Row {result['sheet_row']}"
-                    )
-                )
+                    scan_df = scan_df.dropna(subset=["player_name_raw", "line"]).copy()
+                    scan_df["player_name_raw"] = scan_df["player_name_raw"].astype(str).str.strip()
 
-                status_placeholder.success(
-                    f"Added {result['player_name']} | "
-                    f"{result['sportsbook']} {result['sportsbook_line']} | "
-                    f"Pred {result['predicted_points']} | "
-                    f"{result['model_pick']} | Edge {result['edge']}"
-                )
+                    scan_df = scan_df.sort_values(
+                        by=["player_name_raw", "last_update"],
+                        ascending=[True, False]
+                    ).drop_duplicates(
+                        subset=["player_name_raw"],
+                        keep="first"
+                    ).reset_index(drop=True)
 
-                st.cache_data.clear()
+                    existing_keys = {
+                        (
+                            str(item["player_name"]).strip(),
+                            str(item["sportsbook"]).strip().lower(),
+                            float(item["sportsbook_line"]),
+                        )
+                        for item in st.session_state.manual_add_queue
+                    }
+
+                    added_count = 0
+
+                    for _, row in scan_df.iterrows():
+                        player_name = str(row["player_name_raw"]).strip()
+                        sportsbook_line = float(row["line"])
+                        sportsbook_key = str(queue_sportsbook).strip().lower()
+                        last_update = str(row.get("last_update", "") or "")
+
+                        queue_key = (player_name, sportsbook_key, sportsbook_line)
+
+                        if queue_key in existing_keys:
+                            continue
+
+                        st.session_state.manual_add_queue.append({
+                            "player_name": player_name,
+                            "sportsbook": sportsbook_key,
+                            "sportsbook_line": sportsbook_line,
+                            "last_update": last_update,
+                        })
+
+                        existing_keys.add(queue_key)
+                        added_count += 1
+
+                    if added_count == 0:
+                        status_placeholder.info("No new players were added. Queue already has today's lines.")
+                    else:
+                        status_placeholder.success(
+                            f"Queued {added_count} players with {queue_sportsbook} lines from today's games."
+                        )
 
             except Exception as e:
-                write_admin_log(
-                    action="manual_add_to_sheet1",
-                    source="admin_manual",
-                    status="failed",
-                    details=str(e)
+                status_placeholder.error(f"Scan failed: {e}")
+
+    with scan_col3:
+        if st.button("🧹 Clear Queue", use_container_width=True):
+            st.session_state.manual_add_queue = []
+            status_placeholder.info("Queue cleared.")
+
+    queue_df = pd.DataFrame(st.session_state.manual_add_queue)
+
+    st.markdown("#### Queue")
+    if queue_df.empty:
+        st.info("No players queued yet.")
+    else:
+        display_queue_df = queue_df.copy()
+
+        preferred_cols = ["player_name", "sportsbook", "sportsbook_line", "last_update"]
+        existing_cols = [col for col in preferred_cols if col in display_queue_df.columns]
+        if existing_cols:
+            display_queue_df = display_queue_df[existing_cols]
+
+        st.dataframe(
+            display_queue_df,
+            use_container_width=True,
+            hide_index=True,
+            height=260
+        )
+
+    if st.button("📥 Load Queue to Sheet1", use_container_width=True):
+        queue_items = st.session_state.manual_add_queue
+
+        if not queue_items:
+            status_placeholder.warning("Queue is empty.")
+        else:
+            loaded_count = 0
+            failed_items = []
+            progress_bar = st.progress(0)
+
+            total_items = len(queue_items)
+
+            for idx, item in enumerate(queue_items, start=1):
+                try:
+                    result = shared_app.append_manual_play_to_sheet1(
+                        player_name=item["player_name"],
+                        sportsbook_key=item["sportsbook"],
+                        sportsbook_line=item["sportsbook_line"],
+                    )
+
+                    write_admin_log(
+                        action="manual_queue_load",
+                        source="admin_manual",
+                        status="success",
+                        details=(
+                            f"{result['player_name']} | "
+                            f"{result['sportsbook']} {result['sportsbook_line']} | "
+                            f"Pred {result['predicted_points']} | "
+                            f"{result['model_pick']} | Edge {result['edge']} | "
+                            f"Row {result['sheet_row']}"
+                        )
+                    )
+
+                    loaded_count += 1
+
+                except Exception as e:
+                    failed_items.append(f"{item['player_name']} | {item['sportsbook']} {item['sportsbook_line']} | {e}")
+                    write_admin_log(
+                        action="manual_queue_load",
+                        source="admin_manual",
+                        status="failed",
+                        details=f"{item['player_name']} | {e}"
+                    )
+
+                progress_bar.progress(idx / total_items)
+                time.sleep(0.75)
+
+            st.session_state.manual_add_queue = []
+            st.cache_data.clear()
+
+            if failed_items:
+                status_placeholder.warning(
+                    f"Loaded {loaded_count} players. {len(failed_items)} failed."
                 )
-                status_placeholder.error(f"Failed: {e}")
-    
+                with st.expander("Show queue load failures"):
+                    for msg in failed_items:
+                        st.write(msg)
+            else:
+                status_placeholder.success(f"Loaded {loaded_count} queued players into Sheet1.")
     
     st.markdown("### Sheet1 Pending Rows Snapshot")
 
