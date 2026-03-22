@@ -931,25 +931,25 @@ with operations_tab:
 
     sportsbook_options = get_available_sportsbooks()
 
-    scan_col1, scan_col2, scan_col3 = st.columns([1, 1, 1])
-    
-    with scan_col1:
-        st.markdown("Sportsbook")
-        queue_sportsbook = st.selectbox(
-            "Sportsbook",
-            options=sportsbook_options,
-            index=0,
-            key="queue_sportsbook",
-            label_visibility="collapsed"
-        )
-    
-    with scan_col2:
-        st.markdown("&nbsp;", unsafe_allow_html=True)
-        if st.button("🔎 Scan Today's Lines to Queue", use_container_width=True):
-    
-    with scan_col3:
-        st.markdown("&nbsp;", unsafe_allow_html=True)
-        if st.button("🧹 Clear Queue", use_container_width=True):
+        scan_col1, scan_col2, scan_col3 = st.columns([1, 1, 1])
+        
+        with scan_col1:
+            st.markdown("Sportsbook")
+            queue_sportsbook = st.selectbox(
+                "Sportsbook",
+                options=sportsbook_options,
+                index=0,
+                key="queue_sportsbook",
+                label_visibility="collapsed"
+            )
+        
+        with scan_col2:
+            st.markdown("&nbsp;", unsafe_allow_html=True)
+            if st.button("🔎 Scan Today's Lines to Queue", use_container_width=True):
+        
+        with scan_col3:
+            st.markdown("&nbsp;", unsafe_allow_html=True)
+            if st.button("🧹 Clear Queue", use_container_width=True):
             try:
                 odds_api_key = st.secrets["ODDS_API_KEY"]
                 props_df = shared_app.fetch_all_today_player_props(odds_api_key, queue_sportsbook)
