@@ -10,7 +10,6 @@ import random
 
 from google.oauth2.service_account import Credentials
 from nba_api.stats.static import players
-from nba_api.stats.endpoints import playergamelog
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
