@@ -1,13 +1,14 @@
 import os
 import json
 import time
+import random
 import requests
 import joblib
 import pandas as pd
 import unicodedata
 import gspread
-import random
 
+from datetime import datetime
 from google.oauth2.service_account import Credentials
 from nba_api.stats.static import players
 from requests.adapters import HTTPAdapter
@@ -21,6 +22,7 @@ SHEET_KEY = "1uhjV_Si-qcILfNJbKZrD52y4JnT_GvqQ0hzN7POekQM"
 BOOKMAKER_KEY = "draftkings"
 EDGE_THRESHOLD = 3.0
 TOP_PLAYS_LIMIT = 15
+
 NBA_STATS_HEADERS = {
     "Host": "stats.nba.com",
     "Connection": "keep-alive",
@@ -58,21 +60,26 @@ def get_top_plays_live_sheet():
     client = get_gsheet_client()
     return client.open_by_key(SHEET_KEY).worksheet("Top Plays Live")
 
+
 def update_top_plays_live_sheet(df):
     sheet = get_top_plays_live_sheet()
 
     if df is None or df.empty:
         print("[TOP PLAYS] No data available -> writing placeholder", flush=True)
         sheet.clear()
-        sheet.update("A1", [["No data available"]])
+        sheet.update(range_name="A1", values=[["No data available"]])
         return 0
 
     print(f"[TOP PLAYS] Writing {len(df)} rows to Top Plays Live", flush=True)
 
     sheet.clear()
-    sheet.update([df.columns.values.tolist()] + df.values.tolist())
+    sheet.update(
+        range_name="A1",
+        values=[df.columns.values.tolist()] + df.values.tolist()
+    )
 
     return len(df)
+
 
 def build_nba_session():
     session = requests.Session()
@@ -93,6 +100,7 @@ def build_nba_session():
     session.headers.update(NBA_STATS_HEADERS)
 
     return session
+
 
 def normalize_name(name: str) -> str:
     if not name:
@@ -142,23 +150,6 @@ def fetch_upcoming_nba_events(api_key):
 
 def fetch_player_points_market(api_key, event_id, bookmaker_key):
     url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/events/{event_id}/odds"
-    resp = requests.get(
-        url,
-        params={
-            "apiKey": api_key,
-            "regions": "us",
-            "markets": "player_points",
-            "bookmakers": bookmaker_key,
-            "oddsFormat": "american",
-        },
-        timeout=20,
-    )
-    resp.raise_for_status()
-    return resp.json()
-
-
-def fetch_player_points_market(api_key, event_id, bookmaker_key):
-    url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/events/{event_id}/odds"
 
     params = {
         "apiKey": api_key,
@@ -178,6 +169,96 @@ def fetch_player_points_market(api_key, event_id, bookmaker_key):
 
     resp.raise_for_status()
     return resp.json()
+
+
+def fetch_all_today_player_props(api_key, bookmaker_key):
+    print("Fetching NBA events from Odds API...", flush=True)
+    events = fetch_upcoming_nba_events(api_key)
+    print(f"Events found: {len(events)}", flush=True)
+
+    rows = []
+
+    for event_idx, event in enumerate(events, start=1):
+        event_id = event.get("id")
+        if not event_id:
+            continue
+
+        print(
+            f"Reading event {event_idx}/{len(events)}: "
+            f"{event.get('away_team', '')} @ {event.get('home_team', '')}",
+            flush=True,
+        )
+
+        try:
+            event_odds = fetch_player_points_market(api_key, event_id, bookmaker_key)
+        except Exception as e:
+            print(f"  Skipped event odds fetch: {e}", flush=True)
+            continue
+
+        time.sleep(0.3)
+
+        home_team = event.get("home_team", "")
+        away_team = event.get("away_team", "")
+        commence_time = event.get("commence_time", "")
+
+        for bookmaker in event_odds.get("bookmakers", []):
+            book_title = bookmaker.get("title", "Unknown")
+            book_key = bookmaker.get("key", bookmaker_key)
+
+            for market in bookmaker.get("markets", []):
+                if market.get("key") != "player_points":
+                    continue
+
+                market_last_update = market.get("last_update", "")
+                grouped = {}
+
+                for outcome in market.get("outcomes", []):
+                    player_desc = outcome.get("description", "")
+                    point = outcome.get("point")
+                    side = outcome.get("name")
+
+                    if not player_desc or point is None or side not in ("Over", "Under"):
+                        continue
+
+                    key = (normalize_name(player_desc), float(point))
+                    if key not in grouped:
+                        grouped[key] = {
+                            "player_name_raw": player_desc,
+                            "line": float(point),
+                            "over_price": None,
+                            "under_price": None,
+                        }
+
+                    if side == "Over":
+                        grouped[key]["over_price"] = outcome.get("price")
+                    elif side == "Under":
+                        grouped[key]["under_price"] = outcome.get("price")
+
+                for _, item in grouped.items():
+                    if item["over_price"] is None or item["under_price"] is None:
+                        continue
+
+                    rows.append({
+                        "player_name_raw": item["player_name_raw"],
+                        "line": item["line"],
+                        "bookmaker": book_title,
+                        "bookmaker_key": str(book_key).lower(),
+                        "last_update": market_last_update,
+                        "home_team": home_team,
+                        "away_team": away_team,
+                        "commence_time": commence_time,
+                    })
+
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows)
+    df = df.drop_duplicates(
+        subset=["player_name_raw", "line", "bookmaker_key", "commence_time"]
+    ).reset_index(drop=True)
+
+    return df
+
 
 def load_model():
     print("Loading model...", flush=True)
@@ -241,7 +322,7 @@ def get_player_gamelog_df(player_id, season):
 
             df = pd.DataFrame(rows, columns=headers)
 
-            if df is not None and not df.empty:
+            if not df.empty:
                 time.sleep(random.uniform(0.4, 1.1))
                 return df
 
@@ -294,7 +375,7 @@ def build_player_feature_row(df, player_name):
     df["last5_fta"] = df.groupby("PLAYER_NAME")["FTA"].transform(lambda x: x.shift(1).rolling(5).mean())
     df["last5_minutes"] = df.groupby("PLAYER_NAME")["MIN"].transform(lambda x: x.shift(1).rolling(5).mean())
     df["last5_gmsc"] = df.groupby("PLAYER_NAME")["gmsc"].transform(lambda x: x.shift(1).rolling(5).mean())
-    df["home_game"] = df["MATCHUP"].str.contains("vs").astype(int)
+    df["home_game"] = df["MATCHUP"].astype(str).str.contains("vs").astype(int)
     df["days_rest"] = df.groupby("PLAYER_NAME")["GAME_DATE"].diff().dt.days.fillna(3)
     df["is_back_to_back"] = (df["days_rest"] == 1).astype(int)
     df["usage_proxy"] = df["FGA"] + 0.44 * df["FTA"] + df["TOV"]
@@ -517,18 +598,8 @@ def process_prop_row(
         "last_update": row_data.get("last_update", ""),
     }
 
-    append_payload = {
-        "player_name": actual_name,
-        "game_date": format_event_game_date(row_data.get("commence_time", "")),
-        "line": float(line),
-        "sportsbook": str(row_data.get("bookmaker_key", BOOKMAKER_KEY)).lower(),
-        "last_update": row_data.get("last_update", ""),
-        "predicted_points": predicted_points,
-        "model_pick": model_pick,
-        "edge": edge,
-    }
+    return scored_row, "success"
 
-    return (scored_row, append_payload), "success"
 
 def main():
     print("[TOP PLAYS] ===== START WORKFLOW =====", flush=True)
@@ -546,7 +617,7 @@ def main():
 
     props_df = fetch_all_today_player_props(odds_api_key, BOOKMAKER_KEY)
     raw_props_count = len(props_df)
-    
+
     if not props_df.empty:
         props_df = props_df.sort_values(
             by=["player_name_raw", "last_update"],
@@ -555,7 +626,7 @@ def main():
             subset=["player_name_raw"],
             keep="first"
         ).reset_index(drop=True)
-    
+
     props_count = len(props_df)
     print(f"[TOP PLAYS] Raw props found: {raw_props_count}", flush=True)
     print(f"[TOP PLAYS] Unique player props after dedupe: {props_count}", flush=True)
@@ -602,9 +673,7 @@ def main():
         if not result:
             continue
 
-        scored_row, _ = result
-        add_scored_row(scored_map, scored_row)
-        
+        add_scored_row(scored_map, result)
         time.sleep(random.uniform(0.15, 0.45))
 
     if retry_rows:
@@ -632,9 +701,7 @@ def main():
                     print("  Retry failed: gamelog still unavailable", flush=True)
                 continue
 
-            scored_row, _ = result
-            add_scored_row(scored_map, scored_row)
-
+            add_scored_row(scored_map, result)
             time.sleep(random.uniform(0.15, 0.45))
 
     scored_count = len(scored_map)
@@ -665,8 +732,7 @@ def main():
         model_pick = row["model_pick"]
         last_update = row.get("last_update", "")
         edge = row.get("edge", 0)
-
-        game_date = datetime.now().strftime("%B %d, %Y")
+        game_date = format_event_game_date(row.get("commence_time", ""))
 
         if already_logged(records_df, player_name, game_date, sportsbook, line):
             print(
