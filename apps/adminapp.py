@@ -268,8 +268,12 @@ def build_usage_summary(logs_df):
     top_players = pd.DataFrame()
     search_df = working_df[working_df["event_type"] == "search"].copy()
     if not search_df.empty and "player_name" in search_df.columns:
+        valid_player_df = search_df[
+            (~search_df["player_name"].isin(["", "None", "none", "nan"]))
+        ].copy()
+        
         top_players = (
-            search_df[search_df["player_name"] != ""]
+            valid_player_df
             .groupby("player_name")
             .size()
             .reset_index(name="search_count")
