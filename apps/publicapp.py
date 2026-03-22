@@ -742,7 +742,7 @@ st.markdown(f"""
 top_games_win_rate, top_games_total = get_strong_plays_summary()
 health = get_strong_plays_health()
 
-st.markdown('<div class="section-card"><div class="section-title">Top Plays Today</div>', unsafe_allow_html=True)
+
 
 if top_games_win_rate is not None:
     st.markdown(
@@ -801,6 +801,7 @@ try:
             pred_text = f"{pred_val:.2f}" if pd.notna(pred_val) else "N/A"
             edge_text = f"{edge_val:+.2f}" if pd.notna(edge_val) else "N/A"
 
+            st.markdown('<div class="section-card"><div class="section-title">Top Plays Today</div>', unsafe_allow_html=True)
             st.markdown(
                 f"""
                 <div class="top-play-card">
