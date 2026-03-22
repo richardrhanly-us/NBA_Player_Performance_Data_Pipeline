@@ -136,14 +136,20 @@ def get_sheet_records_df():
 
 @st.cache_data(ttl=120)
 def get_strong_plays_df():
-    sheet = get_strong_plays_sheet()
-    values = sheet.get_all_values()
-    if not values or len(values) < 2:
-        return pd.DataFrame()
+    try:
+        sheet = get_strong_plays_sheet()
+        values = sheet.get_all_values()
 
-    headers = values[0]
-    rows = values[1:]
-    return pd.DataFrame(rows, columns=headers)
+        if not values or len(values) < 2:
+            return pd.DataFrame()
+
+        headers = values[0]
+        rows = values[1:]
+        return pd.DataFrame(rows, columns=headers)
+
+    except Exception as e:
+        print(f"[ERROR] get_strong_plays_df failed: {e}")
+        return pd.DataFrame()
 
 
 @st.cache_data(ttl=120)
