@@ -405,6 +405,77 @@ def format_minutes(minutes_str):
         return str(minutes_str)
 
 
+def parse_minutes_to_float(minutes_value):
+    if minutes_value is None:
+        return None
+
+    text = str(minutes_value).strip()
+    if not text:
+        return None
+
+    try:
+        if ":" in text:
+            parts = text.split(":")
+            if len(parts) == 2:
+                mins = float(parts[0])
+                secs = float(parts[1])
+                return mins + (secs / 60.0)
+
+        text = text.replace("PT", "")
+
+        mins = 0.0
+        secs = 0.0
+
+        if "M" in text:
+            m_part = text.split("M")[0]
+            mins = float(m_part) if m_part else 0.0
+            text = text.split("M")[1]
+
+        if "S" in text:
+            s_part = text.replace("S", "")
+            secs = float(s_part) if s_part else 0.0
+
+        return mins + (secs / 60.0)
+
+    except Exception:
+        return None
+
+
+def get_live_adjusted_projection(predicted_points, live_stats):
+    if not live_stats:
+        return predicted_points
+
+    current_points = live_stats.get("points")
+    minutes_played = parse_minutes_to_float(live_stats.get("minutes"))
+
+    try:
+        current_points = float(current_points)
+    except Exception:
+        return predicted_points
+
+    if minutes_played is None or minutes_played <= 0:
+        return predicted_points
+
+    regulation_minutes = 48.0
+    remaining_minutes = max(regulation_minutes - minutes_played, 0.0)
+
+    pregame_points_per_min = predicted_points / regulation_minutes
+    live_points_per_min = current_points / minutes_played
+
+    live_weight = min(max(minutes_played / 24.0, 0.25), 0.75)
+    pregame_weight = 1.0 - live_weight
+
+    blended_points_per_min = (
+        (pregame_points_per_min * pregame_weight) +
+        (live_points_per_min * live_weight)
+    )
+
+    adjusted_projection = current_points + (blended_points_per_min * remaining_minutes)
+    adjusted_projection = max(adjusted_projection, current_points)
+
+    return adjusted_projection
+
+
 @st.cache_resource
 def get_gsheet_client():
     creds = Credentials.from_service_account_info(
@@ -467,20 +538,11 @@ def build_prediction(player_name, sportsbook_line):
         X = X.reindex(columns=model_feature_names, fill_value=0)
 
     predicted_points = float(model.predict(X)[0])
+    base_predicted_points = predicted_points
 
     points_std = None
     if isinstance(model_stats, dict):
         points_std = model_stats.get("std_dev")
-
-    over_prob = None
-    under_prob = None
-    if sportsbook_line is not None and points_std:
-        try:
-            over_prob = 1 - norm.cdf(sportsbook_line, loc=predicted_points, scale=points_std)
-            under_prob = norm.cdf(sportsbook_line, loc=predicted_points, scale=points_std)
-        except Exception:
-            over_prob = None
-            under_prob = None
 
     season_avg = None
     last5_avg = None
@@ -499,6 +561,21 @@ def build_prediction(player_name, sportsbook_line):
         live_stats = get_live_player_stats(actual_name)
     except Exception:
         live_stats = None
+
+    live_adjusted_projection = get_live_adjusted_projection(base_predicted_points, live_stats)
+
+    if live_stats:
+        predicted_points = live_adjusted_projection
+
+    over_prob = None
+    under_prob = None
+    if sportsbook_line is not None and points_std:
+        try:
+            over_prob = 1 - norm.cdf(sportsbook_line, loc=predicted_points, scale=points_std)
+            under_prob = norm.cdf(sportsbook_line, loc=predicted_points, scale=points_std)
+        except Exception:
+            over_prob = None
+            under_prob = None
 
     team_info = None
     if get_team_game_info is not None:
@@ -527,6 +604,8 @@ def build_prediction(player_name, sportsbook_line):
     return {
         "actual_name": actual_name,
         "predicted_points": predicted_points,
+        "base_predicted_points": base_predicted_points,
+        "live_adjusted_projection": live_adjusted_projection,
         "sportsbook_line": sportsbook_line,
         "edge": predicted_points - sportsbook_line if sportsbook_line is not None else None,
         "over_prob": over_prob,
@@ -600,7 +679,7 @@ try:
     if top_plays_df.empty:
         st.info("No top plays available right now.")
     else:
-        st.markdown("###  Top 3 Plays")
+        st.markdown("### ⭐ Top 3 Plays")
 
         top3 = top_plays_df.head(3)
         for _, row in top3.iterrows():
@@ -653,39 +732,37 @@ try:
 
         def row_color(row):
             edge = row.get("Edge")
-        
+
             if pd.isna(edge):
                 return [""] * len(row)
-        
+
             strength = abs(edge)
-        
-            # Strong plays = bright green
+
             if strength >= 6:
                 color = "rgba(34,197,94,0.8)"
-        
-            # Medium = softer green
             elif strength >= 3:
                 color = "rgba(34,197,94,0.4)"
-        
-            # Weak = subtle gray
             else:
                 color = "rgba(148,163,184,0.15)"
-        
+
             return [f"background-color: {color};"] * len(row)
-        
-        
+
         styled_df = (
             display_df.head(10)
             .style
             .apply(row_color, axis=1)
+            .format({
+                "Line": "{:.1f}",
+                "Projection": "{:.2f}",
+                "Edge": "{:+.2f}",
+            })
         )
-        
+
         st.dataframe(
             styled_df,
             use_container_width=True,
             hide_index=True
         )
-        
         st.caption("Top plays are prebuilt from the latest updater run for faster loading.")
 except Exception as e:
     st.info(f"Top plays are temporarily unavailable: {e}")
@@ -736,8 +813,8 @@ sportsbook_line = st.number_input(
 if live_line is not None:
     st.caption(f"Loaded {selected_book} line: {float(live_line):.1f}")
 else:
-    st.caption(f"No live sportsbook line found for {selected_player} at {selected_book}. Using manual input.")
-    
+    st.caption("Live sportsbook line not available — using manual input.")
+
 if selected_player:
     with st.spinner("Building projection..."):
         result = build_prediction(selected_player, float(sportsbook_line))
@@ -762,12 +839,14 @@ if selected_player:
         model_label_color = "#cbd5e1"
 
         predicted_points = result["predicted_points"]
+        base_predicted_points = result.get("base_predicted_points")
         season_avg = result.get("season_avg")
         last5_avg = result.get("last5_avg")
         games_used = result.get("games_used")
         edge = result.get("edge")
         over_prob = result.get("over_prob")
         under_prob = result.get("under_prob")
+        live_stats = result.get("live_stats")
 
         if edge is not None:
             pick_text, pick_kind = get_pick_label(edge)
@@ -807,6 +886,7 @@ if selected_player:
             )
 
         edge_text = f"{edge:+.2f}" if edge is not None else "N/A"
+        projection_label = "Live Adjusted Projection" if live_stats else "Predicted Points"
 
         model_card_html = f"""
 <div class="model-card" style="background:{model_bg};border:2px solid {hex_to_rgba(model_border,0.95)};box-shadow:0 0 0 1px rgba(255,255,255,0.04),0 0 22px {model_glow};">
@@ -815,7 +895,7 @@ if selected_player:
 
 <div class="model-main">
 <div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
-<div class="model-stat-label" style="color:{model_label_color};">Predicted Points</div>
+<div class="model-stat-label" style="color:{model_label_color};">{projection_label}</div>
 <div class="model-stat-value">{predicted_points:.2f}</div>
 </div>
 
@@ -845,6 +925,12 @@ if selected_player:
 </div>
 """
         st.markdown(model_card_html, unsafe_allow_html=True)
+
+        if live_stats and base_predicted_points is not None:
+            st.caption(
+                f"Pregame model: {base_predicted_points:.2f} | "
+                f"Live-adjusted projection: {predicted_points:.2f}"
+            )
 
         subcol1, subcol2, subcol3 = st.columns(3)
 
@@ -908,7 +994,6 @@ if selected_player:
                     unsafe_allow_html=True
                 )
 
-        live_stats = result.get("live_stats")
         if live_stats:
             st.markdown("#### Live Game Status")
             live_col1, live_col2, live_col3 = st.columns(3)
