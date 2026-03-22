@@ -46,6 +46,60 @@ def safe_float(value):
     except Exception:
         return None
 
+def parse_game_clock_to_minutes(clock_value):
+    if clock_value is None:
+        return None
+
+    text = str(clock_value).strip()
+    if not text:
+        return None
+
+    try:
+        if text.startswith("PT"):
+            text = text.replace("PT", "")
+            mins = 0.0
+            secs = 0.0
+
+            if "M" in text:
+                m_part = text.split("M")[0]
+                mins = float(m_part) if m_part else 0.0
+                text = text.split("M")[1]
+
+            if "S" in text:
+                s_part = text.replace("S", "")
+                secs = float(s_part) if s_part else 0.0
+
+            return mins + (secs / 60.0)
+
+        if ":" in text:
+            parts = text.split(":")
+            if len(parts) == 2:
+                mins = float(parts[0])
+                secs = float(parts[1])
+                return mins + (secs / 60.0)
+
+        return float(text)
+
+    except Exception:
+        return None
+
+def compute_game_minutes_remaining(period, game_clock_minutes):
+    if period is None or game_clock_minutes is None:
+        return None
+
+    try:
+        period = int(period)
+        game_clock_minutes = float(game_clock_minutes)
+    except Exception:
+        return None
+
+    if period <= 4:
+        remaining_prior_periods = max(4 - period, 0) * 12.0
+        return remaining_prior_periods + game_clock_minutes
+
+    overtime_periods_left = 0.0
+    return (5.0 * overtime_periods_left) + game_clock_minutes
+    
 
 @st.cache_resource
 def get_gsheet_client():
@@ -389,10 +443,20 @@ def get_live_player_stats(player_name):
         points = stats.get("points", 0)
         minutes = stats.get("minutes", "0")
 
+        game_data = data.get("game", {})
+        period = game_data.get("period")
+        game_clock = game_data.get("gameClock")
+
+        clock_minutes = parse_game_clock_to_minutes(game_clock)
+        game_minutes_remaining = compute_game_minutes_remaining(period, clock_minutes)
+
         return {
             "points": points if str(points).strip() != "" else 0,
             "minutes": str(minutes) if minutes is not None else "0",
-            "game_status": game_status_text
+            "game_status": game_status_text,
+            "period": period,
+            "game_clock": game_clock,
+            "game_minutes_remaining": game_minutes_remaining
         }
 
     except Exception:
