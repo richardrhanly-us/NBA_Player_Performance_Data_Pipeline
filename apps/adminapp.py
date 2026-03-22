@@ -342,7 +342,7 @@ if not admin_mode:
 
 overview_tab, operations_tab, logs_tab, usage_tab, review_tab = st.tabs([
     "Overview",
-    "Operations",
+    "Admin Tools",
     "Logs",
     "Usage",
     "Data Review",
