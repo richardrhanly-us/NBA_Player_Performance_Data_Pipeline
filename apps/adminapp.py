@@ -17,9 +17,6 @@ from src.shared_app import (
     get_strong_plays_health,
     update_all_pending_sheet_results,
     get_top_plays_today_df,
-    append_manual_play_to_sheet1,
-    get_available_sportsbooks,
-    load_active_players,
 )
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -787,87 +784,7 @@ with operations_tab:
                 )
                 status_placeholder.error(f"Top Plays rebuild failed: {e}")
 
-    # ================================
-    # MANUAL ADD TO SHEET1 (ADMIN TOOL)
-    # ================================
-    st.markdown("### Manual Add to Sheet1")
-
-    actual_name_to_id, _ = load_active_players()
-    admin_player_names = sorted(actual_name_to_id.keys())
-    sportsbook_options = get_available_sportsbooks()
-
-    manual_col1, manual_col2, manual_col3 = st.columns([2, 1, 1])
-
-    with manual_col1:
-        manual_player = st.selectbox(
-            "Player",
-            options=admin_player_names,
-            index=None,
-            placeholder="Search player...",
-            key="admin_manual_player"
-        )
-
-    with manual_col2:
-        manual_sportsbook = st.selectbox(
-            "Sportsbook",
-            options=sportsbook_options,
-            index=0,
-            key="admin_manual_sportsbook"
-        )
-
-    with manual_col3:
-        manual_line_override = st.text_input(
-            "Line (optional)",
-            value="",
-            key="admin_manual_line_override"
-        )
-
-    if st.button("➕ Add to Sheet1", use_container_width=True):
-
-        if not manual_player:
-            status_placeholder.warning("Select a player first.")
-        else:
-            try:
-                line_override = None
-                if manual_line_override.strip() != "":
-                    line_override = float(manual_line_override.strip())
-
-                result = append_manual_play_to_sheet1(
-                    player_name=manual_player,
-                    sportsbook_key=manual_sportsbook,
-                    sportsbook_line=line_override,
-                )
-
-                write_admin_log(
-                    action="manual_add_to_sheet1",
-                    source="admin_manual",
-                    status="success",
-                    details=(
-                        f"{result['player_name']} | "
-                        f"{result['sportsbook']} {result['sportsbook_line']} | "
-                        f"Pred {result['predicted_points']} | "
-                        f"{result['model_pick']} | Edge {result['edge']} | "
-                        f"Row {result['sheet_row']}"
-                    )
-                )
-
-                status_placeholder.success(
-                    f"Added {result['player_name']} | "
-                    f"{result['sportsbook']} {result['sportsbook_line']} | "
-                    f"Pred {result['predicted_points']} | "
-                    f"{result['model_pick']} | Edge {result['edge']}"
-                )
-
-                st.cache_data.clear()
-
-            except Exception as e:
-                write_admin_log(
-                    action="manual_add_to_sheet1",
-                    source="admin_manual",
-                    status="failed",
-                    details=str(e)
-                )
-                status_placeholder.error(f"Failed: {e}")
+   
     
     with row2_col2:
         if st.button("🔄 Refresh App State", use_container_width=True):
