@@ -471,6 +471,7 @@ def parse_minutes_to_float(minutes_value):
         return None
 
 
+
 def get_live_adjusted_projection(predicted_points, live_stats):
     if not live_stats:
         return predicted_points
@@ -522,6 +523,44 @@ def get_live_adjusted_projection(predicted_points, live_stats):
         return min(adjusted_projection, current_points + 3.0)
 
     return adjusted_projection
+
+def format_game_clock(clock_value):
+    if not clock_value:
+        return "0:00"
+
+    text = str(clock_value).strip()
+
+    try:
+        # Handle ISO format like PT02M44.00S
+        if text.startswith("PT"):
+            text = text.replace("PT", "")
+
+            mins = 0
+            secs = 0
+
+            if "M" in text:
+                m_part = text.split("M")[0]
+                mins = int(float(m_part)) if m_part else 0
+                text = text.split("M")[1]
+
+            if "S" in text:
+                s_part = text.replace("S", "")
+                secs = int(float(s_part)) if s_part else 0
+
+            return f"{mins}:{secs:02d}"
+
+        # Already normal format
+        if ":" in text:
+            parts = text.split(":")
+            if len(parts) == 2:
+                mins = int(float(parts[0]))
+                secs = int(float(parts[1]))
+                return f"{mins}:{secs:02d}"
+
+        return text
+
+    except Exception:
+        return text
 
 @st.cache_resource
 def get_gsheet_client():
@@ -1091,7 +1130,7 @@ if selected_player:
                     f"""
                     <div class="mini-card">
                         <div class="mini-title">Game Clock</div>
-                        <div class="mini-value">{safe_live_display(live_stats.get('game_clock', 'N/A'))}</div>
+                        <div class="mini-value">{format_game_clock(live_stats.get('game_clock'))}</div>
                     </div>
                     """,
                     unsafe_allow_html=True
