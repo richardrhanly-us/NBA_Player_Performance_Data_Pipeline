@@ -110,6 +110,35 @@ st.markdown("""
     .muted {
         color: #94a3b8;
     }
+
+    /* --- FIX BUTTON VISIBILITY --- */
+
+    div.stButton > button {
+        color: #f8fafc !important;            /* readable text */
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;
+        border: 1px solid rgba(255,255,255,0.12) !important;
+        border-radius: 12px !important;
+        font-weight: 700 !important;
+    }
+    
+    /* Hover */
+    div.stButton > button:hover {
+        background: linear-gradient(135deg, #334155 0%, #1e293b 100%) !important;
+        color: #ffffff !important;
+    }
+    
+    /* Disabled buttons (this is your current problem) */
+    div.stButton > button:disabled {
+        background: rgba(148,163,184,0.15) !important;
+        color: #64748b !important;   /* darker text so it's visible */
+        border: 1px solid rgba(148,163,184,0.25) !important;
+        cursor: not-allowed !important;
+    }
+    
+    /* Secondary buttons (Streamlit sometimes uses this) */
+    div.stButton > button[kind="secondary"] {
+        color: #f8fafc !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
