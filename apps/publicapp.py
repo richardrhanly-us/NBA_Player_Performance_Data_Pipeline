@@ -1026,105 +1026,106 @@ if selected_player:
                 f"Live-adjusted projection: {predicted_points:.2f}"
             )
 
+
         if over_prob is not None and under_prob is not None:
-        prob_col1, prob_col2 = st.columns(2)
+            prob_col1, prob_col2 = st.columns(2)
 
-        with prob_col1:
+            with prob_col1:
+                st.markdown(
+                    f"""
+                    <div class="mini-card">
+                        <div class="mini-title">Over Probability</div>
+                        <div class="mini-value">{over_prob * 100:.1f}%</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+            with prob_col2:
+                st.markdown(
+                    f"""
+                    <div class="mini-card">
+                        <div class="mini-title">Under Probability</div>
+                        <div class="mini-value">{under_prob * 100:.1f}%</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+        if live_stats:
+            st.markdown("#### Live Game Status")
+
+            live_col1, live_col2, live_col3 = st.columns(3)
+
+            with live_col1:
+                st.markdown(
+                    f"""
+                    <div class="mini-card">
+                        <div class="mini-title">Current Points</div>
+                        <div class="mini-value">{safe_live_display(live_stats.get('points', 'N/A'))}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+            with live_col2:
+                st.markdown(
+                    f"""
+                    <div class="mini-card">
+                        <div class="mini-title">Minutes</div>
+                        <div class="mini-value">{format_minutes(live_stats.get('minutes'))}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+            with live_col3:
+                game_status = format_game_status_short(live_stats.get("game_status"))
+                game_clock = format_game_clock(live_stats.get("game_clock"))
+
+                st.markdown(
+                    f"""
+                    <div class="mini-card">
+                        <div class="mini-title">Game</div>
+                        <div class="mini-value">{game_status} • {game_clock}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+        subcol1, subcol2, subcol3 = st.columns(3)
+
+        with subcol1:
+            season_text = "N/A" if season_avg is None else f"{season_avg:.2f}"
             st.markdown(
                 f"""
                 <div class="mini-card">
-                    <div class="mini-title">Over Probability</div>
-                    <div class="mini-value">{over_prob * 100:.1f}%</div>
+                    <div class="mini-title">Season Avg</div>
+                    <div class="mini-value">{season_text}</div>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
 
-        with prob_col2:
+        with subcol2:
+            last5_text = "N/A" if last5_avg is None else f"{last5_avg:.2f}"
             st.markdown(
                 f"""
                 <div class="mini-card">
-                    <div class="mini-title">Under Probability</div>
-                    <div class="mini-value">{under_prob * 100:.1f}%</div>
+                    <div class="mini-title">Last 5 Avg</div>
+                    <div class="mini-value">{last5_text}</div>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
 
-    if live_stats:
-        st.markdown("#### Live Game Status")
-
-        live_col1, live_col2, live_col3 = st.columns(3)
-
-        with live_col1:
+        with subcol3:
             st.markdown(
                 f"""
                 <div class="mini-card">
-                    <div class="mini-title">Current Points</div>
-                    <div class="mini-value">{safe_live_display(live_stats.get('points', 'N/A'))}</div>
+                    <div class="mini-title">Sample Size</div>
+                    <div class="mini-value">{games_used}</div>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
-
-        with live_col2:
-            st.markdown(
-                f"""
-                <div class="mini-card">
-                    <div class="mini-title">Minutes</div>
-                    <div class="mini-value">{format_minutes(live_stats.get('minutes'))}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-        with live_col3:
-            game_status = format_game_status_short(live_stats.get("game_status"))
-            game_clock = format_game_clock(live_stats.get("game_clock"))
-
-            st.markdown(
-                f"""
-                <div class="mini-card">
-                    <div class="mini-title">Game</div>
-                    <div class="mini-value">{game_status} • {game_clock}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-    subcol1, subcol2, subcol3 = st.columns(3)
-
-    with subcol1:
-        season_text = "N/A" if season_avg is None else f"{season_avg:.2f}"
-        st.markdown(
-            f"""
-            <div class="mini-card">
-                <div class="mini-title">Season Avg</div>
-                <div class="mini-value">{season_text}</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    with subcol2:
-        last5_text = "N/A" if last5_avg is None else f"{last5_avg:.2f}"
-        st.markdown(
-            f"""
-            <div class="mini-card">
-                <div class="mini-title">Last 5 Avg</div>
-                <div class="mini-value">{last5_text}</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    with subcol3:
-        st.markdown(
-            f"""
-            <div class="mini-card">
-                <div class="mini-title">Sample Size</div>
-                <div class="mini-value">{games_used}</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )   
