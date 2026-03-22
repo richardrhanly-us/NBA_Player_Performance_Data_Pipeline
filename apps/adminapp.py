@@ -202,15 +202,28 @@ def format_last_update(value):
 
 @st.cache_data(ttl=30)
 def get_admin_logs_df():
-    ws = ensure_admin_log_sheet()
-    values = ws.get_all_values()
+    try:
+        ws = ensure_admin_log_sheet()
+        values = ws.get_all_values()
 
-    if not values or len(values) < 2:
+        expected_cols = ["timestamp", "action", "source", "status", "details"]
+
+        if not values or len(values) < 2:
+            return pd.DataFrame(columns=expected_cols)
+
+        headers = [str(h).strip() for h in values[0]]
+        rows = values[1:]
+        df = pd.DataFrame(rows, columns=headers)
+
+        for col in expected_cols:
+            if col not in df.columns:
+                df[col] = ""
+
+        return df[expected_cols]
+
+    except Exception as e:
+        print(f"[ERROR] get_admin_logs_df failed: {e}")
         return pd.DataFrame(columns=["timestamp", "action", "source", "status", "details"])
-
-    headers = values[0]
-    rows = values[1:]
-    return pd.DataFrame(rows, columns=headers)
 
 
 def get_usage_log_sheet():
@@ -220,21 +233,48 @@ def get_usage_log_sheet():
 
 
 def get_usage_logs_df():
-    ws = get_usage_log_sheet()
-    values = ws.get_all_values()
+    expected_cols = [
+        "timestamp",
+        "event_type",
+        "session_id",
+        "player_name",
+        "sportsbook",
+        "details",
+    ]
 
-    if not values or len(values) < 2:
-        return pd.DataFrame(
-            columns=["timestamp", "event_type", "session_id", "player_name", "sportsbook", "details"]
-        )
+    try:
+        ws = get_usage_log_sheet()
+        values = ws.get_all_values()
 
-    headers = values[0]
-    rows = values[1:]
-    return pd.DataFrame(rows, columns=headers)
+        if not values or len(values) < 2:
+            return pd.DataFrame(columns=expected_cols)
+
+        headers = [str(h).strip() for h in values[0]]
+        rows = values[1:]
+        df = pd.DataFrame(rows, columns=headers)
+
+        for col in expected_cols:
+            if col not in df.columns:
+                df[col] = ""
+
+        return df[expected_cols]
+
+    except Exception as e:
+        print(f"[ERROR] get_usage_logs_df failed: {e}")
+        return pd.DataFrame(columns=expected_cols)
 
 
 def build_usage_summary(logs_df):
-    if logs_df.empty:
+    expected_cols = [
+        "timestamp",
+        "event_type",
+        "session_id",
+        "player_name",
+        "sportsbook",
+        "details",
+    ]
+
+    if logs_df is None or logs_df.empty:
         return {
             "page_views": 0,
             "unique_sessions": 0,
@@ -246,47 +286,50 @@ def build_usage_summary(logs_df):
 
     working_df = logs_df.copy()
 
-    if "event_type" in working_df.columns:
-        working_df["event_type"] = working_df["event_type"].astype(str).str.strip()
+    for col in expected_cols:
+        if col not in working_df.columns:
+            working_df[col] = ""
 
-    if "session_id" in working_df.columns:
-        working_df["session_id"] = working_df["session_id"].astype(str).str.strip()
-
-    if "player_name" in working_df.columns:
-        working_df["player_name"] = working_df["player_name"].astype(str).str.strip()
-
-    if "sportsbook" in working_df.columns:
-        working_df["sportsbook"] = working_df["sportsbook"].astype(str).str.strip().str.lower()
+    working_df["event_type"] = working_df["event_type"].astype(str).str.strip()
+    working_df["session_id"] = working_df["session_id"].astype(str).str.strip()
+    working_df["player_name"] = working_df["player_name"].astype(str).str.strip()
+    working_df["sportsbook"] = working_df["sportsbook"].astype(str).str.strip().str.lower()
 
     page_views = len(working_df[working_df["event_type"] == "page_view"])
     searches = len(working_df[working_df["event_type"] == "search"])
     top_play_clicks = len(working_df[working_df["event_type"] == "top_play_click"])
 
-    unique_sessions = 0
-    if "session_id" in working_df.columns:
-        unique_sessions = working_df["session_id"].replace("", pd.NA).dropna().nunique()
+    unique_sessions = (
+        working_df["session_id"]
+        .replace(["", "None", "none", "nan"], pd.NA)
+        .dropna()
+        .nunique()
+    )
+
+    valid_player_df = working_df[
+        (working_df["event_type"] == "search") &
+        (~working_df["player_name"].isin(["", "None", "none", "nan"]))
+    ].copy()
 
     top_players = pd.DataFrame()
-    search_df = working_df[working_df["event_type"] == "search"].copy()
-    if not search_df.empty and "player_name" in search_df.columns:
-        valid_player_df = search_df[
-            (~search_df["player_name"].isin(["", "None", "none", "nan"]))
-        ].copy()
-        
+    if not valid_player_df.empty:
         top_players = (
-            valid_player_df
-            .groupby("player_name")
+            valid_player_df.groupby("player_name")
             .size()
             .reset_index(name="search_count")
             .sort_values("search_count", ascending=False)
             .head(10)
         )
 
+    valid_book_df = working_df[
+        (working_df["event_type"] == "search") &
+        (~working_df["sportsbook"].isin(["", "None", "none", "nan"]))
+    ].copy()
+
     top_books = pd.DataFrame()
-    if not search_df.empty and "sportsbook" in search_df.columns:
+    if not valid_book_df.empty:
         top_books = (
-            search_df[search_df["sportsbook"] != ""]
-            .groupby("sportsbook")
+            valid_book_df.groupby("sportsbook")
             .size()
             .reset_index(name="search_count")
             .sort_values("search_count", ascending=False)
@@ -304,16 +347,21 @@ def build_usage_summary(logs_df):
 
 
 def get_sheet1_df():
-    client = get_gsheet_client()
-    ws = client.open_by_key(SHEET_KEY).worksheet("Sheet1")
-    values = ws.get_all_values()
+    try:
+        client = get_gsheet_client()
+        ws = client.open_by_key(SHEET_KEY).worksheet("Sheet1")
+        values = ws.get_all_values()
 
-    if not values or len(values) < 2:
+        if not values or len(values) < 2:
+            return pd.DataFrame()
+
+        headers = [str(h).strip() for h in values[0]]
+        rows = values[1:]
+        return pd.DataFrame(rows, columns=headers)
+
+    except Exception as e:
+        print(f"[ERROR] get_sheet1_df failed: {e}")
         return pd.DataFrame()
-
-    headers = values[0]
-    rows = values[1:]
-    return pd.DataFrame(rows, columns=headers)
 
 
 def build_sheet1_debug_summary(df):
@@ -367,16 +415,22 @@ def build_sheet1_debug_summary(df):
         "pending_df": pending_df,
     }
 
+
 def load_strong_plays_df():
-    sheet = get_strong_plays_sheet()
-    values = sheet.get_all_values()
+    try:
+        sheet = get_strong_plays_sheet()
+        values = sheet.get_all_values()
 
-    if not values or len(values) < 2:
+        if not values or len(values) < 2:
+            return pd.DataFrame()
+
+        headers = [str(h).strip() for h in values[0]]
+        rows = values[1:]
+        return pd.DataFrame(rows, columns=headers)
+
+    except Exception as e:
+        print(f"[ERROR] load_strong_plays_df failed: {e}")
         return pd.DataFrame()
-
-    headers = values[0]
-    rows = values[1:]
-    return pd.DataFrame(rows, columns=headers)
 
 
 st.markdown(
@@ -414,8 +468,18 @@ overview_tab, operations_tab, logs_tab, usage_tab, review_tab = st.tabs([
 
 
 with overview_tab:
-    top_games_win_rate, top_games_total = get_strong_plays_summary()
-    health = get_strong_plays_health()
+    try:
+        top_games_win_rate, top_games_total = get_strong_plays_summary()
+    except Exception as e:
+        top_games_win_rate, top_games_total = None, 0
+        st.warning(f"Could not load Strong Plays summary: {e}")
+
+    try:
+        health = get_strong_plays_health()
+    except Exception as e:
+        health = None
+        st.warning(f"Could not load Strong Plays health data: {e}")
+
     usage_logs_df = get_usage_logs_df()
     usage_summary = build_usage_summary(usage_logs_df)
 
@@ -802,6 +866,7 @@ with operations_tab:
         st.error(f"Could not build Sheet1 debug summary: {e}")
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 with logs_tab:
     st.markdown('<div class="section-card"><div class="section-title">Admin Logs</div>', unsafe_allow_html=True)
