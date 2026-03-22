@@ -3,6 +3,7 @@ import os
 import pandas as pd
 import streamlit as st
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from google.oauth2.service_account import Credentials
 import gspread
 
@@ -180,7 +181,7 @@ def ensure_admin_log_sheet():
 def write_admin_log(action, source, status, details=""):
     try:
         ws = ensure_admin_log_sheet()
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d %H:%M:%S")
 
         ws.append_row(
             [timestamp, action, source, status, str(details)],
