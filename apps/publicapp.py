@@ -815,6 +815,44 @@ if health:
 
 try:
     top_plays_df = get_top_plays_live_df()
+
+    # Re-validate each saved play against the current sportsbook line
+    validated_rows = []
+    
+    for _, row in top_plays_df.iterrows():
+        player_name = row.get("PLAYER_NAME")
+        sportsbook = str(row.get("sportsbook", "draftkings")).lower()
+    
+        if not player_name:
+            continue
+    
+        try:
+            current_line_data = get_player_points_lines(player_name, sportsbook)
+        except Exception:
+            current_line_data = None
+    
+        # If no current sportsbook line exists, drop the row
+        if not current_line_data:
+            continue
+    
+        current_line = current_line_data.get("points_line")
+        if current_line is None:
+            continue
+    
+        # Optional: also drop if game is already final
+        try:
+            live_stats = get_live_player_stats(player_name)
+        except Exception:
+            live_stats = None
+    
+        if live_stats:
+            game_status_text = str(live_stats.get("game_status", "")).upper()
+            if "FINAL" in game_status_text:
+                continue
+    
+        validated_rows.append(row)
+    
+    top_plays_df = pd.DataFrame(validated_rows)
     
     # Clean numeric line
     top_plays_df["sportsbook_line"] = pd.to_numeric(
