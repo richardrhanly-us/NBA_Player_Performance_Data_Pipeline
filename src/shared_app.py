@@ -854,7 +854,7 @@ def update_sheet_with_final_result(row_number, final_points, sportsbook_line, mo
     return True
 
 
-def update_all_pending_sheet_results():
+def update_all_pending_sheet_results(debug=False):
     sheet = get_strong_plays_sheet()
     values = sheet.get_all_values()
 
@@ -865,14 +865,25 @@ def update_all_pending_sheet_results():
     rows = values[1:]
     df = pd.DataFrame(rows, columns=headers)
 
+
+    
     required_cols = ["PLAYER_NAME", "GAME_DATE", "sportsbook_line", "model_pick", "bet_status"]
     if any(col not in df.columns for col in required_cols):
         raise ValueError("Strong Plays sheet is missing required columns.")
 
+    
     updated_count = 0
     checked_count = 0
+    rows_scanned = 0
+    pending_rows_found = 0
+    rows_skipped_not_final = 0
+    rows_skipped_missing_player_date = 0
+    rows_skipped_other = 0
+    rows_updated = 0
+    row_debug = []
 
     for idx, row in df.iterrows():
+        rows_scanned += 1
         bet_status = str(row.get("bet_status", "")).strip().upper()
         if bet_status != "PENDING":
             continue
