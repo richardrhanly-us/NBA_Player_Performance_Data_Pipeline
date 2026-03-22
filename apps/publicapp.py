@@ -815,6 +815,26 @@ if health:
 
 try:
     top_plays_df = get_top_plays_live_df()
+    
+    # Clean numeric line
+    top_plays_df["sportsbook_line"] = pd.to_numeric(
+        top_plays_df.get("sportsbook_line"),
+        errors="coerce"
+    )
+    
+    # 🚫 Remove rows with no real line
+    top_plays_df = top_plays_df[
+        top_plays_df["sportsbook_line"].notna()
+    ].copy()
+    
+    top_plays_df = top_plays_df[
+        top_plays_df["sportsbook_line"] > 0
+    ].copy()
+
+    #  Remove fake fallback lines (like default 25.5)
+    top_plays_df = top_plays_df[
+        top_plays_df["sportsbook_line"] != 25.5
+    ].copy()
 
     if "sportsbook_line" in top_plays_df.columns:
         top_plays_df["sportsbook_line"] = pd.to_numeric(top_plays_df["sportsbook_line"], errors="coerce")
