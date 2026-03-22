@@ -13,13 +13,15 @@ from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
 
-
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 CURRENT_SEASON = "2025-26"
-APP_VERSION = "v1.0"
+APP_VERSION = "v1.1"
 SHEET_KEY = "1uhjV_Si-qcILfNJbKZrD52y4JnT_GvqQ0hzN7POekQM"
 BOOKMAKER_KEY = "draftkings"
 EDGE_THRESHOLD = 3.0
+
+RESULTS_SHEET_NAME = "Sheet1"
+STRONG_PLAYS_SHEET_NAME = "Strong Plays"
 
 
 def normalize_name(name: str) -> str:
@@ -45,6 +47,7 @@ def safe_float(value):
         return float(value)
     except Exception:
         return None
+
 
 def parse_game_clock_to_minutes(clock_value):
     if clock_value is None:
@@ -83,6 +86,7 @@ def parse_game_clock_to_minutes(clock_value):
     except Exception:
         return None
 
+
 def compute_game_minutes_remaining(period, game_clock_minutes):
     if period is None or game_clock_minutes is None:
         return None
@@ -99,7 +103,7 @@ def compute_game_minutes_remaining(period, game_clock_minutes):
 
     overtime_periods_left = 0.0
     return (5.0 * overtime_periods_left) + game_clock_minutes
-    
+
 
 @st.cache_resource
 def get_gsheet_client():
@@ -119,7 +123,13 @@ def get_gsheet():
 @st.cache_resource
 def get_strong_plays_sheet():
     client = get_gsheet_client()
-    return client.open_by_key(SHEET_KEY).worksheet("Strong Plays")
+    return client.open_by_key(SHEET_KEY).worksheet(STRONG_PLAYS_SHEET_NAME)
+
+
+@st.cache_resource
+def get_results_sheet():
+    client = get_gsheet_client()
+    return client.open_by_key(SHEET_KEY).worksheet(RESULTS_SHEET_NAME)
 
 
 @st.cache_data(ttl=120)
@@ -369,6 +379,7 @@ def get_scoreboard_for_date(game_date=None):
     except Exception:
         return []
 
+
 def get_live_player_stats(player_name):
     try:
         from nba_api.live.nba.endpoints import boxscore as live_boxscore
@@ -607,7 +618,6 @@ def get_player_points_lines(player_name, bookmaker_key):
 
     props_df = props_df.copy()
 
-    # Figure out which player-name column exists
     if "player_name_raw" in props_df.columns:
         name_col = "player_name_raw"
     elif "player_name" in props_df.columns:
@@ -622,16 +632,13 @@ def get_player_points_lines(player_name, bookmaker_key):
 
     normalized_target = normalize_name(player_name)
 
-    # Exact normalized match first
     player_df = props_df[props_df["normalized_name"] == normalized_target].copy()
 
-    # Fallback: contains match
     if player_df.empty:
         player_df = props_df[
             props_df["normalized_name"].str.contains(normalized_target, na=False)
         ].copy()
 
-    # Fallback: reverse contains match
     if player_df.empty:
         player_df = props_df[
             props_df["normalized_name"].apply(
@@ -642,7 +649,6 @@ def get_player_points_lines(player_name, bookmaker_key):
     if player_df.empty:
         return None
 
-    # Keep only rows with a usable line
     if "line" not in player_df.columns:
         return None
 
@@ -652,7 +658,6 @@ def get_player_points_lines(player_name, bookmaker_key):
     if player_df.empty:
         return None
 
-    # If multiple rows exist, use the first valid one
     row = player_df.iloc[0]
 
     return {
@@ -811,9 +816,62 @@ def get_final_points_from_gamelog(player_name, game_date):
     return final_points
 
 
-def update_sheet_with_final_result(row_number, final_points, sportsbook_line, model_pick):
-    sheet = get_strong_plays_sheet()
+def get_worksheet_with_df(sheet_name):
+    client = get_gsheet_client()
+    ws = client.open_by_key(SHEET_KEY).worksheet(sheet_name)
+    values = ws.get_all_values()
 
+    if not values:
+        return ws, pd.DataFrame(), []
+
+    headers = [str(h).strip() for h in values[0]]
+    rows = values[1:]
+
+    if not rows:
+        return ws, pd.DataFrame(columns=headers), headers
+
+    df = pd.DataFrame(rows, columns=headers)
+    return ws, df, headers
+
+
+def column_letter_from_index(index_1_based):
+    result = ""
+    while index_1_based > 0:
+        index_1_based, remainder = divmod(index_1_based - 1, 26)
+        result = chr(65 + remainder) + result
+    return result
+
+
+def build_header_index_map(headers):
+    return {str(col).strip(): i + 1 for i, col in enumerate(headers)}
+
+
+def is_blank_cell(value):
+    return str(value).strip() == ""
+
+
+def is_pending_result_row(row):
+    bet_status = str(row.get("bet_status", "")).strip().upper()
+    final_points_blank = is_blank_cell(row.get("final_points", ""))
+    line_result_blank = is_blank_cell(row.get("line_result", ""))
+    model_result_blank = is_blank_cell(row.get("model_result", ""))
+
+    return (
+        bet_status == "PENDING" or
+        final_points_blank or
+        line_result_blank or
+        model_result_blank
+    )
+
+
+def update_sheet_with_final_result(
+    worksheet,
+    header_index_map,
+    row_number,
+    final_points,
+    sportsbook_line,
+    model_pick
+):
     line = safe_float(sportsbook_line)
     points = safe_float(final_points)
     pick = str(model_pick).strip().upper()
@@ -843,42 +901,78 @@ def update_sheet_with_final_result(row_number, final_points, sportsbook_line, mo
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    sheet.update(range_name=f"G{row_number}", values=[[points]])
-    sheet.update(range_name=f"H{row_number}", values=[[line_result]])
-    sheet.update(range_name=f"J{row_number}", values=[[model_result]])
-    sheet.update(range_name=f"K{row_number}", values=[[timestamp]])
-    sheet.update(range_name=f"L{row_number}", values=[[profit]])
-    sheet.update(range_name=f"N{row_number}", values=[[bet_status]])
+    updates = {
+        "final_points": points,
+        "line_result": line_result,
+        "model_result": model_result,
+        "result_logged_at": timestamp,
+        "profit": profit,
+        "bet_status": bet_status,
+    }
 
+    batch_payload = []
+    for col_name, value in updates.items():
+        if col_name not in header_index_map:
+            continue
+        col_letter = column_letter_from_index(header_index_map[col_name])
+        batch_payload.append({
+            "range": f"{col_letter}{row_number}",
+            "values": [[value]]
+        })
+
+    if not batch_payload:
+        return False
+
+    worksheet.batch_update(batch_payload)
     st.cache_data.clear()
     return True
 
 
 def update_all_pending_sheet_results(debug=False):
-    client = get_gsheet_client()
-    sheet = client.open_by_key(SHEET_KEY).worksheet("Sheet1")
-    values = sheet.get_all_values()
+    source_sheet_name = RESULTS_SHEET_NAME
+    worksheet, df, headers = get_worksheet_with_df(source_sheet_name)
 
-    if not values or len(values) < 2:
-        if debug:
-            return {
-                "rows_scanned": 0,
-                "pending_rows_found": 0,
-                "rows_skipped_not_final": 0,
-                "rows_skipped_missing_player_date": 0,
-                "rows_skipped_other": 0,
-                "rows_updated": 0,
-                "row_debug": [],
-            }
-        return 0, 0
+    status_box = None
+    progress_bar = None
 
-    headers = values[0]
-    rows = values[1:]
-    df = pd.DataFrame(rows, columns=headers)
+    if debug:
+        status_box = st.empty()
+        progress_bar = st.progress(0)
 
-    required_cols = ["PLAYER_NAME", "GAME_DATE", "sportsbook_line", "sportsbook", "last_update", "predicted_points", "final_points", "line_result", "model_pick", "model_result", "result_logged_at", "profit", "cumulative_profit", "edge", "bet_status"]
-    if any(col not in df.columns for col in required_cols):
-        raise ValueError("Strong Plays sheet is missing required columns.")
+    if df.empty:
+        empty_result = {
+            "source_sheet": source_sheet_name,
+            "total_data_rows_loaded": 0,
+            "rows_scanned": 0,
+            "pending_rows_found": 0,
+            "rows_skipped_not_final": 0,
+            "rows_skipped_missing_player_date": 0,
+            "rows_skipped_other": 0,
+            "rows_updated": 0,
+            "row_debug": [],
+        }
+        if debug and status_box is not None:
+            status_box.info(f"No data rows found in {source_sheet_name}.")
+            progress_bar.progress(1.0)
+        return empty_result if debug else (0, 0)
+
+    required_cols = [
+        "PLAYER_NAME",
+        "GAME_DATE",
+        "sportsbook_line",
+        "model_pick",
+        "final_points",
+        "line_result",
+        "model_result",
+        "bet_status",
+    ]
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        raise ValueError(
+            f"{source_sheet_name} is missing required columns: {', '.join(missing_cols)}"
+        )
+
+    header_index_map = build_header_index_map(headers)
 
     updated_count = 0
     checked_count = 0
@@ -890,32 +984,44 @@ def update_all_pending_sheet_results(debug=False):
     row_debug = []
 
     today = pd.Timestamp.now(tz="America/Chicago").date()
+    total_rows = len(df)
 
     for idx, row in df.iterrows():
         rows_scanned += 1
-
-        final_points_cell = str(row.get("final_points", "")).strip()
-        line_result_cell = str(row.get("line_result", "")).strip()
-        model_result_cell = str(row.get("model_result", "")).strip()
-        
-        is_pending = (
-            final_points_cell == "" or
-            line_result_cell == "" or
-            model_result_cell == ""
-        )
-        
-        if not is_pending:
-            continue
-        
-        pending_rows_found += 1
-        checked_count += 1
+        sheet_row_number = idx + 2
 
         player_name = str(row.get("PLAYER_NAME", "")).strip()
         game_date = str(row.get("GAME_DATE", "")).strip()
         sportsbook_line = row.get("sportsbook_line", "")
         model_pick = row.get("model_pick", "")
 
-        sheet_row_number = idx + 2
+        if debug and status_box is not None:
+            status_box.markdown(
+                f"""
+                <div class="status-box">
+                    <div><span class="muted">Update Final Results:</span> scanning {source_sheet_name}</div>
+                    <div><span class="muted">Row:</span> {sheet_row_number} ({rows_scanned} of {total_rows})</div>
+                    <div><span class="muted">Player:</span> {player_name or 'N/A'}</div>
+                    <div><span class="muted">Game Date:</span> {game_date or 'N/A'}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            progress_bar.progress(min(rows_scanned / total_rows, 1.0))
+
+        if not is_pending_result_row(row):
+            if debug:
+                row_debug.append({
+                    "row_number": sheet_row_number,
+                    "player_name": player_name,
+                    "game_date": game_date,
+                    "status": "not_pending",
+                    "details": "Row already has result data",
+                })
+            continue
+
+        pending_rows_found += 1
+        checked_count += 1
 
         if not player_name or not game_date:
             rows_skipped_missing_player_date += 1
@@ -951,7 +1057,7 @@ def update_all_pending_sheet_results(debug=False):
                     "player_name": player_name,
                     "game_date": game_date,
                     "status": "skipped_not_final",
-                    "details": "Game date is today or later, likely not final yet",
+                    "details": "Game date is today or later",
                 })
             continue
 
@@ -963,13 +1069,15 @@ def update_all_pending_sheet_results(debug=False):
                     "row_number": sheet_row_number,
                     "player_name": player_name,
                     "game_date": game_date,
-                    "status": "skipped_not_final_or_not_found",
-                    "details": "No final points found in gamelog",
+                    "status": "skipped_not_found_in_gamelog",
+                    "details": "No final points found in player gamelog",
                 })
             continue
 
         try:
             success = update_sheet_with_final_result(
+                worksheet=worksheet,
+                header_index_map=header_index_map,
                 row_number=sheet_row_number,
                 final_points=final_points,
                 sportsbook_line=sportsbook_line,
@@ -984,9 +1092,9 @@ def update_all_pending_sheet_results(debug=False):
                         "player_name": player_name,
                         "game_date": game_date,
                         "status": "updated",
-                        "details": f"final_points={final_points}",
+                        "details": f"Updated in {source_sheet_name} with final_points={final_points}",
                     })
-                time.sleep(0.4)
+                time.sleep(0.15)
             else:
                 rows_skipped_other += 1
                 if debug:
@@ -995,7 +1103,7 @@ def update_all_pending_sheet_results(debug=False):
                         "player_name": player_name,
                         "game_date": game_date,
                         "status": "skipped_other",
-                        "details": "update_sheet_with_final_result returned False",
+                        "details": "No writable result columns found for this sheet",
                     })
 
         except Exception as e:
@@ -1011,15 +1119,34 @@ def update_all_pending_sheet_results(debug=False):
 
     st.cache_data.clear()
 
+    result = {
+        "source_sheet": source_sheet_name,
+        "total_data_rows_loaded": total_rows,
+        "rows_scanned": rows_scanned,
+        "pending_rows_found": pending_rows_found,
+        "rows_skipped_not_final": rows_skipped_not_final,
+        "rows_skipped_missing_player_date": rows_skipped_missing_player_date,
+        "rows_skipped_other": rows_skipped_other,
+        "rows_updated": updated_count,
+        "row_debug": row_debug,
+    }
+
+    if debug and status_box is not None:
+        status_box.markdown(
+            f"""
+            <div class="status-box">
+                <div><span class="muted">Update Final Results:</span> complete</div>
+                <div><span class="muted">Source Sheet:</span> {source_sheet_name}</div>
+                <div><span class="muted">Rows Scanned:</span> {rows_scanned}</div>
+                <div><span class="muted">Pending Found:</span> {pending_rows_found}</div>
+                <div><span class="muted">Rows Updated:</span> {updated_count}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        progress_bar.progress(1.0)
+
     if debug:
-        return {
-            "rows_scanned": rows_scanned,
-            "pending_rows_found": pending_rows_found,
-            "rows_skipped_not_final": rows_skipped_not_final,
-            "rows_skipped_missing_player_date": rows_skipped_missing_player_date,
-            "rows_skipped_other": rows_skipped_other,
-            "rows_updated": updated_count,
-            "row_debug": row_debug,
-        }
+        return result
 
     return updated_count, checked_count
