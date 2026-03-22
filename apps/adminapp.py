@@ -303,6 +303,70 @@ def build_usage_summary(logs_df):
     }
 
 
+def get_sheet1_df():
+    client = get_gsheet_client()
+    ws = client.open_by_key(SHEET_KEY).worksheet("Sheet1")
+    values = ws.get_all_values()
+
+    if not values or len(values) < 2:
+        return pd.DataFrame()
+
+    headers = values[0]
+    rows = values[1:]
+    return pd.DataFrame(rows, columns=headers)
+
+
+def build_sheet1_debug_summary(df):
+    if df.empty:
+        return {
+            "total_rows": 0,
+            "pending_rows": 0,
+            "completed_rows": 0,
+            "pending_df": pd.DataFrame(),
+        }
+
+    working_df = df.copy()
+    working_df.columns = [str(c).strip() for c in working_df.columns]
+
+    for col in ["final_points", "line_result", "model_result", "PLAYER_NAME", "GAME_DATE"]:
+        if col not in working_df.columns:
+            working_df[col] = ""
+
+    pending_mask = (
+        working_df["final_points"].astype(str).str.strip().eq("") |
+        working_df["line_result"].astype(str).str.strip().eq("") |
+        working_df["model_result"].astype(str).str.strip().eq("")
+    )
+
+    pending_df = working_df[pending_mask].copy()
+    completed_df = working_df[~pending_mask].copy()
+
+    debug_cols = [
+        col for col in [
+            "PLAYER_NAME",
+            "GAME_DATE",
+            "sportsbook_line",
+            "sportsbook",
+            "predicted_points",
+            "final_points",
+            "model_pick",
+            "line_result",
+            "model_result",
+            "result_logged_at",
+        ]
+        if col in working_df.columns
+    ]
+
+    if debug_cols:
+        pending_df = pending_df[debug_cols]
+
+    return {
+        "total_rows": len(working_df),
+        "pending_rows": len(pending_df),
+        "completed_rows": len(completed_df),
+        "pending_df": pending_df,
+    }
+
 def load_strong_plays_df():
     sheet = get_strong_plays_sheet()
     values = sheet.get_all_values()
@@ -486,24 +550,36 @@ with operations_tab:
 
     status_placeholder = st.empty()
 
+    if "last_operations_debug" not in st.session_state:
+        st.session_state.last_operations_debug = None
+
     row1_col1, row1_col2 = st.columns(2)
     row2_col1, row2_col2 = st.columns(2)
 
     with row1_col1:
         if st.button("📊 Update Final Results", use_container_width=True):
-            status_placeholder.info("Checking pending rows and updating final results...")
+            status_placeholder.info("Scanning Sheet1 and updating eligible final results...")
             try:
-                updated_count, checked_count = update_all_pending_sheet_results()
+                debug_result = update_all_pending_sheet_results(debug=True)
+                st.session_state.last_operations_debug = debug_result
 
                 write_admin_log(
                     action="update_final_results",
                     source="admin_manual",
                     status="success",
-                    details=f"Checked {checked_count} pending rows and updated {updated_count} completed games."
+                    details=(
+                        f"Scanned {debug_result.get('rows_scanned', 0)} rows | "
+                        f"Pending {debug_result.get('pending_rows_found', 0)} | "
+                        f"Skipped not final {debug_result.get('rows_skipped_not_final', 0)} | "
+                        f"Skipped missing player/date {debug_result.get('rows_skipped_missing_player_date', 0)} | "
+                        f"Updated {debug_result.get('rows_updated', 0)}"
+                    )
                 )
 
                 status_placeholder.success(
-                    f"Done. Checked {checked_count} pending rows and updated {updated_count} completed games."
+                    f"Done. Scanned {debug_result.get('rows_scanned', 0)} rows | "
+                    f"Pending {debug_result.get('pending_rows_found', 0)} | "
+                    f"Updated {debug_result.get('rows_updated', 0)}"
                 )
                 st.cache_data.clear()
 
@@ -514,23 +590,31 @@ with operations_tab:
                     status="failed",
                     details=str(e)
                 )
-                status_placeholder.error(f"Batch update failed: {e}")
+                status_placeholder.error(f"Update failed: {e}")
 
     with row1_col2:
-        if st.button("♻️ Retry Pending Results", use_container_width=True):
-            status_placeholder.info("Retrying pending or ungraded rows...")
+        if st.button("🛠️ Retry Pending Results", use_container_width=True):
+            status_placeholder.info("Retrying only pending or ungraded rows...")
             try:
-                updated_count, checked_count = update_all_pending_sheet_results()
+                debug_result = update_all_pending_sheet_results(debug=True)
+                st.session_state.last_operations_debug = debug_result
 
                 write_admin_log(
                     action="retry_pending_results",
                     source="admin_manual",
                     status="success",
-                    details=f"Retried {checked_count} pending rows and updated {updated_count} completed games."
+                    details=(
+                        f"Scanned {debug_result.get('rows_scanned', 0)} rows | "
+                        f"Pending {debug_result.get('pending_rows_found', 0)} | "
+                        f"Skipped not final {debug_result.get('rows_skipped_not_final', 0)} | "
+                        f"Skipped missing player/date {debug_result.get('rows_skipped_missing_player_date', 0)} | "
+                        f"Updated {debug_result.get('rows_updated', 0)}"
+                    )
                 )
 
                 status_placeholder.success(
-                    f"Retry complete. Checked {checked_count} pending rows and updated {updated_count} completed games."
+                    f"Retry complete. Pending {debug_result.get('pending_rows_found', 0)} | "
+                    f"Updated {debug_result.get('rows_updated', 0)}"
                 )
                 st.cache_data.clear()
 
@@ -578,8 +662,146 @@ with operations_tab:
                 )
                 st.error(f"Failed to refresh app: {e}")
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("### Operation Debug Summary")
 
+    debug_result = st.session_state.get("last_operations_debug")
+
+    if not debug_result:
+        st.info("Run one of the result update actions above to see debug output.")
+    else:
+        dbg1, dbg2, dbg3, dbg4 = st.columns(4)
+
+        with dbg1:
+            st.markdown(
+                f"""
+                <div class="status-box">
+                    <div class="mini-label">Rows Scanned</div>
+                    <div class="mini-value">{debug_result.get('rows_scanned', 0)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        with dbg2:
+            st.markdown(
+                f"""
+                <div class="status-box">
+                    <div class="mini-label">Skipped Not Final</div>
+                    <div class="mini-value">{debug_result.get('rows_skipped_not_final', 0)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        with dbg3:
+            st.markdown(
+                f"""
+                <div class="status-box">
+                    <div class="mini-label">Skipped Missing Player/Date</div>
+                    <div class="mini-value">{debug_result.get('rows_skipped_missing_player_date', 0)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        with dbg4:
+            st.markdown(
+                f"""
+                <div class="status-box">
+                    <div class="mini-label">Rows Updated</div>
+                    <div class="mini-value">{debug_result.get('rows_updated', 0)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        dbg5, dbg6 = st.columns(2)
+
+        with dbg5:
+            st.markdown(
+                f"""
+                <div class="status-box">
+                    <div class="mini-label">Pending Rows Found</div>
+                    <div class="mini-value">{debug_result.get('pending_rows_found', 0)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        with dbg6:
+            st.markdown(
+                f"""
+                <div class="status-box">
+                    <div class="mini-label">Other Skips</div>
+                    <div class="mini-value">{debug_result.get('rows_skipped_other', 0)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        with st.expander("Show row-level debug details"):
+            row_debug_df = pd.DataFrame(debug_result.get("row_debug", []))
+            if row_debug_df.empty:
+                st.info("No row-level debug details returned.")
+            else:
+                st.dataframe(row_debug_df, use_container_width=True, hide_index=True, height=350)
+
+    st.markdown("### Sheet1 Pending Rows Snapshot")
+
+    try:
+        sheet1_df = get_sheet1_df()
+        debug_summary = build_sheet1_debug_summary(sheet1_df)
+
+        s1, s2, s3 = st.columns(3)
+
+        with s1:
+            st.markdown(
+                f"""
+                <div class="status-box">
+                    <div class="mini-label">Total Sheet1 Rows</div>
+                    <div class="mini-value">{debug_summary['total_rows']}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        with s2:
+            st.markdown(
+                f"""
+                <div class="status-box">
+                    <div class="mini-label">Pending Rows</div>
+                    <div class="mini-value">{debug_summary['pending_rows']}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        with s3:
+            st.markdown(
+                f"""
+                <div class="status-box">
+                    <div class="mini-label">Completed Rows</div>
+                    <div class="mini-value">{debug_summary['completed_rows']}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        with st.expander("Show rows that still look pending in Sheet1"):
+            if debug_summary["pending_df"].empty:
+                st.success("No pending rows detected from Sheet1 snapshot.")
+            else:
+                st.dataframe(
+                    debug_summary["pending_df"],
+                    use_container_width=True,
+                    hide_index=True,
+                    height=350
+                )
+
+    except Exception as e:
+        st.error(f"Could not build Sheet1 debug summary: {e}")
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 with logs_tab:
     st.markdown('<div class="section-card"><div class="section-title">Admin Logs</div>', unsafe_allow_html=True)
