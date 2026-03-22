@@ -1018,7 +1018,8 @@ if selected_player:
                 f"""
                 <div class="mini-card">
                     <div class="mini-title">Games Used</div>
-                    <div class="mini-value">{games_used}</div>
+                    <div class="mini-value">Sample Size: {games_used}</div>
+                    <div class="mini-value">Number of games used to build the model</div>
                 </div>
                 """,
                 unsafe_allow_html=True
