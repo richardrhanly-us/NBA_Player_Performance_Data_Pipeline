@@ -2,6 +2,11 @@ import sys
 import os
 import pandas as pd
 import streamlit as st
+import json
+from datetime import datetime
+from google.oauth2.service_account import Credentials
+import gspread
+
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -105,6 +110,56 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+@st.cache_resource
+def get_gsheet_client():
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=SCOPES,
+    )
+    return gspread.authorize(creds)
+
+
+def get_or_create_worksheet(sheet_name, rows=1000, cols=20):
+    client = get_gsheet_client()
+    workbook = client.open_by_key(SHEET_KEY)
+
+    try:
+        return workbook.worksheet(sheet_name)
+    except gspread.WorksheetNotFound:
+        ws = workbook.add_worksheet(title=sheet_name, rows=rows, cols=cols)
+        return ws
+
+
+def ensure_admin_log_sheet():
+    ws = get_or_create_worksheet(ADMIN_LOG_SHEET_NAME)
+
+    existing_values = ws.get_all_values()
+    if not existing_values:
+        ws.update(
+            "A1:E1",
+            [[
+                "timestamp",
+                "action",
+                "source",
+                "status",
+                "details",
+            ]]
+        )
+
+    return ws
+
+
+def write_admin_log(action, source, status, details=""):
+    try:
+        ws = ensure_admin_log_sheet()
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        ws.append_row(
+            [timestamp, action, source, status, str(details)],
+            value_input_option="USER_ENTERED",
+        )
+    except Exception as e:
+        st.warning(f"Could not write admin log: {e}")
 
 def format_last_update(value):
     if value is None:
@@ -114,6 +169,24 @@ def format_last_update(value):
     except Exception:
         return str(value)
 
+write_admin_log(
+    action="update_final_results",
+    source="admin_manual",
+    status="success",
+    details="Updated 12 rows"
+)
+
+@st.cache_data(ttl=30)
+def get_admin_logs_df():
+    ws = ensure_admin_log_sheet()
+    values = ws.get_all_values()
+
+    if not values or len(values) < 2:
+        return pd.DataFrame(columns=["timestamp", "action", "source", "status", "details"])
+
+    headers = values[0]
+    rows = values[1:]
+    return pd.DataFrame(rows, columns=headers)
 
 def load_strong_plays_df():
     sheet = get_strong_plays_sheet()
@@ -150,6 +223,25 @@ with st.expander("Admin Login", expanded=True):
 if not admin_mode:
     st.stop()
 
+st.subheader("Admin Logs")
+
+logs_df = get_admin_logs_df()
+
+if logs_df.empty:
+    st.info("No admin logs yet.")
+else:
+    st.dataframe(logs_df.tail(25).iloc[::-1], use_container_width=True, hide_index=True)
+
+
+if st.button("Test Admin Log"):
+    write_admin_log(
+        action="test_log",
+        source="admin_manual",
+        status="success",
+        details="Test button clicked"
+    )
+    st.cache_data.clear()
+    st.success("Test log written.")
 
 top_games_win_rate, top_games_total = get_strong_plays_summary()
 health = get_strong_plays_health()
