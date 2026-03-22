@@ -816,6 +816,17 @@ if health:
 try:
     top_plays_df = get_top_plays_live_df()
 
+    if "sportsbook_line" in top_plays_df.columns:
+        top_plays_df["sportsbook_line"] = pd.to_numeric(top_plays_df["sportsbook_line"], errors="coerce")
+    
+    if "game_status" in top_plays_df.columns:
+        top_plays_df = top_plays_df[
+            ~top_plays_df["game_status"].astype(str).str.upper().str.contains("FINAL", na=False)
+        ].copy()
+    
+    top_plays_df = top_plays_df[top_plays_df["sportsbook_line"].notna()].copy()
+    top_plays_df = top_plays_df[top_plays_df["sportsbook_line"] > 0].copy()
+
     if top_plays_df.empty:
         st.info("No top plays available right now.")
     else:
@@ -986,6 +997,8 @@ sportsbook_line = st.number_input(
     key=f"sportsbook_line_{selected_player}_{selected_book}"
 )
 
+line_is_live = live_line is not None
+
 if live_line is not None:
     st.caption(f"Loaded {selected_book} line: {float(live_line):.1f}")
 else:
@@ -994,6 +1007,16 @@ else:
 if selected_player:
     with st.spinner("Building projection..."):
         result = build_prediction(selected_player, float(sportsbook_line))
+
+    game_is_final = False
+    if result.get("live_stats"):
+        game_status_text = str(result["live_stats"].get("game_status", "")).upper()
+        game_is_final = "FINAL" in game_status_text
+    
+    if game_is_final and not line_is_live:
+        st.warning("This game is final and no live sportsbook line is available. Projection is hidden.")
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.stop()
 
     if result.get("error"):
         st.error(result["error"])
