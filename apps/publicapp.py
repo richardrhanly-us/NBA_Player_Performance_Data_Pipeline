@@ -3,6 +3,7 @@ import sys
 from urllib.parse import quote_plus
 import uuid
 from datetime import datetime
+from textwrap import dedent
 
 import gspread
 import pandas as pd
@@ -641,6 +642,115 @@ def format_game_status_short(status, live_stats=None):
     return str(status)
 
 
+def get_player_headshot_url(player_id):
+    if not player_id:
+        return None
+    return f"https://cdn.nba.com/headshots/nba/latest/1040x760/{player_id}.png"
+
+
+def render_model_card(
+    result,
+    model_bg,
+    model_border,
+    model_glow,
+    model_stat_bg,
+    model_stat_border,
+    model_label_color,
+    projection_label,
+    predicted_points,
+    sportsbook_line,
+    edge_text,
+    probability_text,
+    interpretation_text,
+    pick_bg,
+    pick_border,
+    pick_text_color,
+    pick_text,
+):
+    headshot_url = result.get("headshot_url")
+
+    player_header_html = dedent(f"""
+        <div style="display:flex; align-items:center; gap:16px; margin-bottom:12px;">
+            <img
+                src="{headshot_url}"
+                style="
+                    width:72px;
+                    height:72px;
+                    border-radius:16px;
+                    object-fit:cover;
+                    border:1px solid rgba(255,255,255,0.12);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+                "
+                onerror="this.style.display='none';"
+            >
+            <div>
+                <div class="model-title" style="margin-bottom:4px;">
+                    {result["actual_name"]}
+                </div>
+                <div class="model-subtitle">
+                    Model Output
+                </div>
+            </div>
+        </div>
+    """)
+
+    model_card_html = dedent(f"""
+        <div class="model-card"
+             style="background:{model_bg};
+                    border:2px solid {hex_to_rgba(model_border,0.95)};
+                    box-shadow:0 0 1px rgba(255,255,255,0.04),0 0 22px {model_glow};">
+
+            {player_header_html}
+
+            <div class="model-main">
+
+                <div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
+                    <div class="model-stat-label" style="color:{model_label_color};">{projection_label}</div>
+                    <div class="model-stat-value">{predicted_points:.2f}</div>
+                </div>
+
+                <div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
+                    <div class="model-stat-label" style="color:{model_label_color};">Sportsbook Line</div>
+                    <div class="model-stat-value">{sportsbook_line:.1f}</div>
+                </div>
+
+                <div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
+                    <div class="model-stat-label" style="color:{model_label_color};">Model Edge</div>
+                    <div class="model-stat-value">{edge_text}</div>
+                </div>
+
+                <div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
+                    <div class="model-stat-label" style="color:{model_label_color};">Probability Split</div>
+                    <div class="model-stat-value">{probability_text}</div>
+                </div>
+
+            </div>
+
+            <div class="small-note">{interpretation_text}</div>
+
+            <div class="pick-banner"
+                 style="background:{pick_bg};border:2px solid {pick_border};color:{pick_text_color};">
+                {pick_text}
+            </div>
+
+            <div class="small-note">
+                Trained regression model output compared against the current sportsbook line.
+            </div>
+
+        </div>
+    """)
+
+    st.markdown(model_card_html, unsafe_allow_html=True)
+
+
+@st.cache_resource
+def get_gsheet_client():
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=SCOPES,
+    )
+    return gspread.authorize(creds)
+
 
 def get_or_create_usage_worksheet(sheet_name, rows=5000, cols=10):
     client = get_gsheet_client()
@@ -690,14 +800,6 @@ def write_usage_log(event_type, session_id, player_name="", sportsbook="", detai
         )
     except Exception:
         pass
-
-@st.cache_resource
-def get_gsheet_client():
-    creds = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=SCOPES,
-    )
-    return gspread.authorize(creds)
 
 
 @st.cache_data(ttl=300)
@@ -770,12 +872,6 @@ def build_prediction(player_name, sportsbook_line):
         last5_avg = float(gamelog_df["PTS"].tail(5).mean())
     except Exception:
         pass
-    
-    def get_player_headshot_url(player_id):
-        if not player_id:
-            return None
-        return f"https://cdn.nba.com/headshots/nba/latest/1040x760/{player_id}.png"
-    
 
     live_stats = None
     try:
@@ -824,7 +920,6 @@ def build_prediction(player_name, sportsbook_line):
 
     return {
         "actual_name": actual_name,
-        
         "headshot_url": get_player_headshot_url(player_id),
         "player_id": player_id,
         "predicted_points": predicted_points,
@@ -1266,81 +1361,26 @@ if selected_player:
         edge_text = f"{edge:+.2f}" if edge is not None else "N/A"
         projection_label = "Live Adjusted Projection" if live_stats else "Predicted Points"
 
-        headshot_url = result.get("headshot_url")
+        render_model_card(
+            result=result,
+            model_bg=model_bg,
+            model_border=model_border,
+            model_glow=model_glow,
+            model_stat_bg=model_stat_bg,
+            model_stat_border=model_stat_border,
+            model_label_color=model_label_color,
+            projection_label=projection_label,
+            predicted_points=predicted_points,
+            sportsbook_line=sportsbook_line,
+            edge_text=edge_text,
+            probability_text=probability_text,
+            interpretation_text=interpretation_text,
+            pick_bg=pick_bg,
+            pick_border=pick_border,
+            pick_text_color=pick_text_color,
+            pick_text=pick_text,
+        )
 
-        player_header_html = f"""
-<div style="display:flex; align-items:center; gap:16px; margin-bottom:12px;">
-    <img
-        src="{headshot_url}"
-        style="
-            width:72px;
-            height:72px;
-            border-radius:16px;
-            object-fit:cover;
-            border:1px solid rgba(255,255,255,0.12);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-        "
-        onerror="this.style.display='none';"
-    >
-    <div>
-        <div class="model-title" style="margin-bottom:4px;">
-            {result["actual_name"]}
-        </div>
-        <div class="model-subtitle">
-            Model Output
-        </div>
-    </div>
-</div>
-"""
-
-        model_card_html = f"""
-<div class="model-card"
-     style="background:{model_bg};
-            border:2px solid {hex_to_rgba(model_border,0.95)};
-            box-shadow:0 0 1px rgba(255,255,255,0.04),0 0 22px {model_glow};">
-
-    {player_header_html}
-
-    <div class="model-main">
-
-        <div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
-            <div class="model-stat-label" style="color:{model_label_color};">{projection_label}</div>
-            <div class="model-stat-value">{predicted_points:.2f}</div>
-        </div>
-
-        <div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
-            <div class="model-stat-label" style="color:{model_label_color};">Sportsbook Line</div>
-            <div class="model-stat-value">{sportsbook_line:.1f}</div>
-        </div>
-
-        <div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
-            <div class="model-stat-label" style="color:{model_label_color};">Model Edge</div>
-            <div class="model-stat-value">{edge_text}</div>
-        </div>
-
-        <div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
-            <div class="model-stat-label" style="color:{model_label_color};">Probability Split</div>
-            <div class="model-stat-value">{probability_text}</div>
-        </div>
-
-    </div>
-
-    <div class="small-note">{interpretation_text}</div>
-
-    <div class="pick-banner"
-         style="background:{pick_bg};border:2px solid {pick_border};color:{pick_text_color};">
-        {pick_text}
-    </div>
-
-    <div class="small-note">
-        Trained regression model output compared against the current sportsbook line.
-    </div>
-
-</div>
-"""
-
-        st.markdown(model_card_html, unsafe_allow_html=True)
-        
         if live_stats and base_predicted_points is not None:
             st.caption(
                 f"Pregame model: {base_predicted_points:.2f} | "
@@ -1371,3 +1411,81 @@ if selected_player:
                     """,
                     unsafe_allow_html=True,
                 )
+
+        if live_stats:
+            st.markdown("#### Live Game Status")
+
+            live_col1, live_col2, live_col3 = st.columns(3)
+
+            with live_col1:
+                st.markdown(
+                    f"""
+                    <div class="mini-card">
+                        <div class="mini-title">Current Points</div>
+                        <div class="mini-value">{safe_live_display(live_stats.get('points', 'N/A'))}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            with live_col2:
+                st.markdown(
+                    f"""
+                    <div class="mini-card">
+                        <div class="mini-title">Minutes</div>
+                        <div class="mini-value">{format_minutes(live_stats.get('minutes'))}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            with live_col3:
+                game_status = format_game_status_short(live_stats.get("game_status"), live_stats)
+                game_clock = format_game_clock(live_stats.get("game_clock"))
+
+                st.markdown(
+                    f"""
+                    <div class="mini-card">
+                        <div class="mini-title">Game</div>
+                        <div class="mini-value">{game_status} • {game_clock}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        subcol1, subcol2, subcol3 = st.columns(3)
+
+        with subcol1:
+            season_text = "N/A" if season_avg is None else f"{season_avg:.2f}"
+            st.markdown(
+                f"""
+                <div class="mini-card">
+                    <div class="mini-title">Season Avg</div>
+                    <div class="mini-value">{season_text}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with subcol2:
+            last5_text = "N/A" if last5_avg is None else f"{last5_avg:.2f}"
+            st.markdown(
+                f"""
+                <div class="mini-card">
+                    <div class="mini-title">Last 5 Avg</div>
+                    <div class="mini-value">{last5_text}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with subcol3:
+            st.markdown(
+                f"""
+                <div class="mini-card">
+                    <div class="mini-title">Sample Size</div>
+                    <div class="mini-value">{games_used}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
