@@ -8,7 +8,7 @@ from google.oauth2.service_account import Credentials
 import gspread
 
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from src.shared_app import (
     APP_VERSION,
     get_strong_plays_sheet,
@@ -18,7 +18,9 @@ from src.shared_app import (
     get_top_plays_today_df,
     get_available_sportsbooks,
     load_active_players,
+    append_manual_play_to_sheet1,
 )
+
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 SHEET_KEY = "1uhjV_Si-qcILfNJbKZrD52y4JnT_GvqQ0hzN7POekQM"
 ADMIN_LOG_SHEET_NAME = "Admin Logs"
