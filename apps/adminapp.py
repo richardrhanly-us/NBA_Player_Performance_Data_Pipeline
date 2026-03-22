@@ -512,26 +512,28 @@ with operations_tab:
                 status_placeholder.error(f"Batch update failed: {e}")
 
     with tool_col2:
-        if st.button("Refresh Dashboard Data", use_container_width=True):
+        if st.button("🔄 Refresh App State"):
             try:
-                write_admin_log(
-                    action="refresh_dashboard_data",
-                    source="admin_manual",
-                    status="success",
-                    details="Cleared cache and reran admin dashboard."
-                )
                 st.cache_data.clear()
                 st.cache_resource.clear()
-                st.success("Cache cleared. Reloading admin dashboard...")
+        
+                write_admin_log(
+                    event="refresh_app_state",
+                    status="success",
+                    message="Cache cleared and app rerun triggered"
+                )
+        
+                st.success("App state refreshed. Reloading...")
+        
                 st.rerun()
+        
             except Exception as e:
                 write_admin_log(
-                    action="refresh_dashboard_data",
-                    source="admin_manual",
-                    status="failed",
-                    details=str(e)
+                    event="refresh_app_state",
+                    status="error",
+                    message=str(e)
                 )
-                st.error(f"Dashboard refresh failed: {e}")
+                st.error(f"Failed to refresh app: {e}")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
