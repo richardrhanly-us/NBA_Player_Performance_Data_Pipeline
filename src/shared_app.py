@@ -732,16 +732,17 @@ def get_player_points_lines(player_name, bookmaker_key):
 
     row = player_df.iloc[0]
 
+
     return {
         "player_name": row.get(name_col),
         "points_line": float(row.get("line")),
         "sportsbook": row.get("sportsbook", bookmaker_key),
+        "last_update": row.get("last_update", ""),
         "home_team": row.get("home_team"),
         "away_team": row.get("away_team"),
         "over_price": row.get("over_price"),
         "under_price": row.get("under_price"),
     }
-
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_top_plays_today_df(api_key, debug=False):
