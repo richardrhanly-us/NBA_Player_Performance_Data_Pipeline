@@ -112,31 +112,26 @@ st.markdown("""
         color: #94a3b8;
     }
 
-    /* --- FIX BUTTON VISIBILITY --- */
-
     div.stButton > button {
-        color: #f8fafc !important;            /* readable text */
+        color: #f8fafc !important;
         background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;
         border: 1px solid rgba(255,255,255,0.12) !important;
         border-radius: 12px !important;
         font-weight: 700 !important;
     }
-    
-    /* Hover */
+
     div.stButton > button:hover {
         background: linear-gradient(135deg, #334155 0%, #1e293b 100%) !important;
         color: #ffffff !important;
     }
-    
-    /* Disabled buttons (this is your current problem) */
+
     div.stButton > button:disabled {
         background: rgba(148,163,184,0.15) !important;
-        color: #64748b !important;   /* darker text so it's visible */
+        color: #64748b !important;
         border: 1px solid rgba(148,163,184,0.25) !important;
         cursor: not-allowed !important;
     }
-    
-    /* Secondary buttons (Streamlit sometimes uses this) */
+
     div.stButton > button[kind="secondary"] {
         color: #f8fafc !important;
     }
@@ -215,6 +210,7 @@ def get_admin_logs_df():
     headers = values[0]
     rows = values[1:]
     return pd.DataFrame(rows, columns=headers)
+
 
 def get_usage_log_sheet():
     client = get_gsheet_client()
@@ -339,373 +335,439 @@ if not admin_mode:
     st.stop()
 
 
-st.subheader("Admin Logs")
-
-logs_df = get_admin_logs_df()
-
-if logs_df.empty:
-    st.info("No admin logs yet.")
-else:
-    st.dataframe(logs_df.tail(25).iloc[::-1], use_container_width=True, hide_index=True)
-
-if st.button("Test Admin Log"):
-    write_admin_log(
-        action="test_log",
-        source="admin_manual",
-        status="success",
-        details="Test button clicked"
-    )
-    st.cache_data.clear()
-    st.success("Test log written.")
-    st.rerun() 
+overview_tab, operations_tab, logs_tab, usage_tab, review_tab = st.tabs([
+    "Overview",
+    "Operations",
+    "Logs",
+    "Usage",
+    "Data Review",
+])
 
 
-top_games_win_rate, top_games_total = get_strong_plays_summary()
-health = get_strong_plays_health()
-
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    st.markdown(
-        f"""
-        <div class="section-card">
-            <div class="mini-label">Win Rate for Top Games</div>
-            <div class="mini-value">
-                {"N/A" if top_games_win_rate is None else f"{top_games_win_rate:.1f}%"}
-            </div>
-            <div class="muted">
-                {"No graded games yet" if top_games_win_rate is None else f"{top_games_total} graded games"}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with col2:
-    total_plays = health["total"] if health else 0
-    st.markdown(
-        f"""
-        <div class="section-card">
-            <div class="mini-label">Total Strong Plays</div>
-            <div class="mini-value">{total_plays}</div>
-            <div class="muted">Current rows in Strong Plays</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with col3:
-    graded_plays = health["graded"] if health else 0
-    st.markdown(
-        f"""
-        <div class="section-card">
-            <div class="mini-label">Graded Plays</div>
-            <div class="mini-value">{graded_plays}</div>
-            <div class="muted">WIN or LOSS only</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with col4:
-    pending_plays = health["pending"] if health else 0
-    st.markdown(
-        f"""
-        <div class="section-card">
-            <div class="mini-label">Pending Plays</div>
-            <div class="mini-value">{pending_plays}</div>
-            <div class="muted">Still waiting on result</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-st.markdown('<div class="section-card"><div class="section-title">Health Check</div>', unsafe_allow_html=True)
-
-if health:
-    st.markdown(
-        f"""
-        <div class="status-box">
-            <div><span class="muted">Last Update:</span> {format_last_update(health.get("last_update"))}</div>
-            <div><span class="muted">Total Plays:</span> {health.get("total", 0)}</div>
-            <div><span class="muted">Graded:</span> {health.get("graded", 0)} &nbsp; | &nbsp; <span class="muted">Pending:</span> {health.get("pending", 0)}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-else:
-    st.warning("Could not load Strong Plays health data.")
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown('<div class="section-card"><div class="section-title">Usage Metrics</div>', unsafe_allow_html=True)
-
-try:
+with overview_tab:
+    top_games_win_rate, top_games_total = get_strong_plays_summary()
+    health = get_strong_plays_health()
     usage_logs_df = get_usage_logs_df()
     usage_summary = build_usage_summary(usage_logs_df)
 
-    metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+    col1, col2, col3, col4 = st.columns(4)
 
-    with metric_col1:
+    with col1:
         st.markdown(
             f"""
-            <div class="status-box">
-                <div class="mini-label">Total Page Views</div>
-                <div class="mini-value">{usage_summary['page_views']}</div>
+            <div class="section-card">
+                <div class="mini-label">Win Rate for Top Games</div>
+                <div class="mini-value">
+                    {"N/A" if top_games_win_rate is None else f"{top_games_win_rate:.1f}%"}
+                </div>
+                <div class="muted">
+                    {"No graded games yet" if top_games_win_rate is None else f"{top_games_total} graded games"}
+                </div>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-    with metric_col2:
+    with col2:
+        total_plays = health["total"] if health else 0
         st.markdown(
             f"""
-            <div class="status-box">
+            <div class="section-card">
+                <div class="mini-label">Total Strong Plays</div>
+                <div class="mini-value">{total_plays}</div>
+                <div class="muted">Current rows in Strong Plays</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    with col3:
+        graded_plays = health["graded"] if health else 0
+        st.markdown(
+            f"""
+            <div class="section-card">
+                <div class="mini-label">Graded Plays</div>
+                <div class="mini-value">{graded_plays}</div>
+                <div class="muted">WIN or LOSS only</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    with col4:
+        pending_plays = health["pending"] if health else 0
+        st.markdown(
+            f"""
+            <div class="section-card">
+                <div class="mini-label">Pending Plays</div>
+                <div class="mini-value">{pending_plays}</div>
+                <div class="muted">Still waiting on result</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
+
+    with summary_col1:
+        st.markdown(
+            f"""
+            <div class="section-card">
+                <div class="mini-label">Page Views</div>
+                <div class="mini-value">{usage_summary['page_views']}</div>
+                <div class="muted">Total public app loads</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    with summary_col2:
+        st.markdown(
+            f"""
+            <div class="section-card">
                 <div class="mini-label">Unique Sessions</div>
                 <div class="mini-value">{usage_summary['unique_sessions']}</div>
+                <div class="muted">Approximate visitors</div>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-    with metric_col3:
+    with summary_col3:
         st.markdown(
             f"""
-            <div class="status-box">
-                <div class="mini-label">Total Searches</div>
+            <div class="section-card">
+                <div class="mini-label">Searches</div>
                 <div class="mini-value">{usage_summary['searches']}</div>
+                <div class="muted">Projection builds</div>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-    with metric_col4:
+    with summary_col4:
         st.markdown(
             f"""
-            <div class="status-box">
+            <div class="section-card">
                 <div class="mini-label">Top Play Clicks</div>
                 <div class="mini-value">{usage_summary['top_play_clicks']}</div>
+                <div class="muted">Featured play engagement</div>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-    subcol1, subcol2 = st.columns(2)
+    st.markdown('<div class="section-card"><div class="section-title">Health Check</div>', unsafe_allow_html=True)
 
-    with subcol1:
-        st.markdown("##### Most Searched Players")
-        if usage_summary["top_players"].empty:
-            st.info("No search data yet.")
-        else:
-            st.dataframe(
-                usage_summary["top_players"],
-                use_container_width=True,
-                hide_index=True,
-                height=260
-            )
-
-    with subcol2:
-        st.markdown("##### Most Used Sportsbooks")
-        if usage_summary["top_books"].empty:
-            st.info("No sportsbook data yet.")
-        else:
-            st.dataframe(
-                usage_summary["top_books"],
-                use_container_width=True,
-                hide_index=True,
-                height=260
-            )
-
-    st.markdown("##### Recent Usage Events")
-    if usage_logs_df.empty:
-        st.info("No usage log events yet.")
-    else:
-        recent_usage_df = usage_logs_df.copy()
-
-        preferred_cols = [
-            "timestamp",
-            "event_type",
-            "session_id",
-            "player_name",
-            "sportsbook",
-            "details",
-        ]
-        existing_cols = [col for col in preferred_cols if col in recent_usage_df.columns]
-        if existing_cols:
-            recent_usage_df = recent_usage_df[existing_cols]
-
-        st.dataframe(
-            recent_usage_df.tail(50).iloc[::-1],
-            use_container_width=True,
-            hide_index=True,
-            height=320
+    if health:
+        st.markdown(
+            f"""
+            <div class="status-box">
+                <div><span class="muted">Last Update:</span> {format_last_update(health.get("last_update"))}</div>
+                <div><span class="muted">Total Plays:</span> {health.get("total", 0)}</div>
+                <div><span class="muted">Graded:</span> {health.get("graded", 0)} &nbsp; | &nbsp; <span class="muted">Pending:</span> {health.get("pending", 0)}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
-
-except Exception as e:
-    st.error(f"Could not load usage metrics: {e}")
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown('<div class="section-card"><div class="section-title">Admin Tools</div>', unsafe_allow_html=True)
-
-status_placeholder = st.empty()
-
-tool_col1, tool_col2 = st.columns([1, 1])
-
-with tool_col1:
-    if st.button("Update Final Results", use_container_width=True):
-        status_placeholder.info("Checking pending rows and updating final results...")
-        try:
-            updated_count, checked_count = update_all_pending_sheet_results()
-            write_admin_log(
-                action="update_final_results",
-                source="admin_manual",
-                status="success",
-                details=f"Checked {checked_count} pending rows and updated {updated_count} completed games."
-            )
-            status_placeholder.success(
-                f"Done. Checked {checked_count} pending rows and updated {updated_count} completed games."
-            )
-            st.cache_data.clear()
-        except Exception as e:
-            write_admin_log(
-                action="update_final_results",
-                source="admin_manual",
-                status="failed",
-                details=str(e)
-            )
-            status_placeholder.error(f"Batch update failed: {e}")
-
-with tool_col2:
-    if st.button("Refresh Dashboard Data", use_container_width=True):
-        try:
-            write_admin_log(
-                action="refresh_dashboard_data",
-                source="admin_manual",
-                status="success",
-                details="Cleared cache and reran admin dashboard."
-            )
-            st.cache_data.clear()
-            st.cache_resource.clear()
-            st.success("Cache cleared. Reloading admin dashboard...")
-            st.rerun()
-        except Exception as e:
-            write_admin_log(
-                action="refresh_dashboard_data",
-                source="admin_manual",
-                status="failed",
-                details=str(e)
-            )
-            st.error(f"Dashboard refresh failed: {e}")
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-
-st.markdown('<div class="section-card"><div class="section-title">Strong Plays Table</div>', unsafe_allow_html=True)
-
-try:
-    strong_df = load_strong_plays_df()
-
-    if strong_df.empty:
-        st.info("Strong Plays sheet is empty.")
     else:
-        display_df = strong_df.copy()
+        st.warning("Could not load Strong Plays health data.")
 
-        preferred_cols = [
-            "PLAYER_NAME",
-            "GAME_DATE",
-            "sportsbook",
-            "sportsbook_line",
-            "predicted_points",
-            "final_points",
-            "model_pick",
-            "bet_status",
-            "result_logged_at",
-        ]
-
-        existing_cols = [col for col in preferred_cols if col in display_df.columns]
-        if existing_cols:
-            display_df = display_df[existing_cols]
-
-        st.dataframe(display_df, use_container_width=True, height=420)
-
-except Exception as e:
-    st.error(f"Could not load Strong Plays table: {e}")
-
-st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
-st.markdown('<div class="section-card"><div class="section-title">Pending Plays Review</div>', unsafe_allow_html=True)
+with operations_tab:
+    st.markdown('<div class="section-card"><div class="section-title">Admin Tools</div>', unsafe_allow_html=True)
 
-try:
-    strong_df = load_strong_plays_df()
+    status_placeholder = st.empty()
+    tool_col1, tool_col2 = st.columns([1, 1])
 
-    if strong_df.empty or "bet_status" not in strong_df.columns:
-        st.info("No pending review data available.")
+    with tool_col1:
+        if st.button("Update Final Results", use_container_width=True):
+            status_placeholder.info("Checking pending rows and updating final results...")
+            try:
+                updated_count, checked_count = update_all_pending_sheet_results()
+                write_admin_log(
+                    action="update_final_results",
+                    source="admin_manual",
+                    status="success",
+                    details=f"Checked {checked_count} pending rows and updated {updated_count} completed games."
+                )
+                status_placeholder.success(
+                    f"Done. Checked {checked_count} pending rows and updated {updated_count} completed games."
+                )
+                st.cache_data.clear()
+            except Exception as e:
+                write_admin_log(
+                    action="update_final_results",
+                    source="admin_manual",
+                    status="failed",
+                    details=str(e)
+                )
+                status_placeholder.error(f"Batch update failed: {e}")
+
+    with tool_col2:
+        if st.button("Refresh Dashboard Data", use_container_width=True):
+            try:
+                write_admin_log(
+                    action="refresh_dashboard_data",
+                    source="admin_manual",
+                    status="success",
+                    details="Cleared cache and reran admin dashboard."
+                )
+                st.cache_data.clear()
+                st.cache_resource.clear()
+                st.success("Cache cleared. Reloading admin dashboard...")
+                st.rerun()
+            except Exception as e:
+                write_admin_log(
+                    action="refresh_dashboard_data",
+                    source="admin_manual",
+                    status="failed",
+                    details=str(e)
+                )
+                st.error(f"Dashboard refresh failed: {e}")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+with logs_tab:
+    st.markdown('<div class="section-card"><div class="section-title">Admin Logs</div>', unsafe_allow_html=True)
+
+    logs_df = get_admin_logs_df()
+
+    if logs_df.empty:
+        st.info("No admin logs yet.")
     else:
-        pending_df = strong_df.copy()
-        pending_df["bet_status"] = pending_df["bet_status"].astype(str).str.strip().str.upper()
-        pending_df = pending_df[pending_df["bet_status"] == "PENDING"].copy()
+        st.dataframe(logs_df.tail(25).iloc[::-1], use_container_width=True, hide_index=True)
 
-        if pending_df.empty:
-            st.success("No pending plays right now.")
+    if st.button("Test Admin Log"):
+        write_admin_log(
+            action="test_log",
+            source="admin_manual",
+            status="success",
+            details="Test button clicked"
+        )
+        st.cache_data.clear()
+        st.success("Test log written.")
+        st.rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+with usage_tab:
+    st.markdown('<div class="section-card"><div class="section-title">Usage Metrics</div>', unsafe_allow_html=True)
+
+    try:
+        usage_logs_df = get_usage_logs_df()
+        usage_summary = build_usage_summary(usage_logs_df)
+
+        metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+
+        with metric_col1:
+            st.markdown(
+                f"""
+                <div class="status-box">
+                    <div class="mini-label">Total Page Views</div>
+                    <div class="mini-value">{usage_summary['page_views']}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        with metric_col2:
+            st.markdown(
+                f"""
+                <div class="status-box">
+                    <div class="mini-label">Unique Sessions</div>
+                    <div class="mini-value">{usage_summary['unique_sessions']}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        with metric_col3:
+            st.markdown(
+                f"""
+                <div class="status-box">
+                    <div class="mini-label">Total Searches</div>
+                    <div class="mini-value">{usage_summary['searches']}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        with metric_col4:
+            st.markdown(
+                f"""
+                <div class="status-box">
+                    <div class="mini-label">Top Play Clicks</div>
+                    <div class="mini-value">{usage_summary['top_play_clicks']}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        subcol1, subcol2 = st.columns(2)
+
+        with subcol1:
+            st.markdown("##### Most Searched Players")
+            if usage_summary["top_players"].empty:
+                st.info("No search data yet.")
+            else:
+                st.dataframe(
+                    usage_summary["top_players"],
+                    use_container_width=True,
+                    hide_index=True,
+                    height=260
+                )
+
+        with subcol2:
+            st.markdown("##### Most Used Sportsbooks")
+            if usage_summary["top_books"].empty:
+                st.info("No sportsbook data yet.")
+            else:
+                st.dataframe(
+                    usage_summary["top_books"],
+                    use_container_width=True,
+                    hide_index=True,
+                    height=260
+                )
+
+        st.markdown("##### Recent Usage Events")
+        if usage_logs_df.empty:
+            st.info("No usage log events yet.")
         else:
+            recent_usage_df = usage_logs_df.copy()
+
+            preferred_cols = [
+                "timestamp",
+                "event_type",
+                "session_id",
+                "player_name",
+                "sportsbook",
+                "details",
+            ]
+            existing_cols = [col for col in preferred_cols if col in recent_usage_df.columns]
+            if existing_cols:
+                recent_usage_df = recent_usage_df[existing_cols]
+
+            st.dataframe(
+                recent_usage_df.tail(50).iloc[::-1],
+                use_container_width=True,
+                hide_index=True,
+                height=320
+            )
+
+    except Exception as e:
+        st.error(f"Could not load usage metrics: {e}")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+with review_tab:
+    st.markdown('<div class="section-card"><div class="section-title">Strong Plays Table</div>', unsafe_allow_html=True)
+
+    try:
+        strong_df = load_strong_plays_df()
+
+        if strong_df.empty:
+            st.info("Strong Plays sheet is empty.")
+        else:
+            display_df = strong_df.copy()
+
             preferred_cols = [
                 "PLAYER_NAME",
                 "GAME_DATE",
                 "sportsbook",
                 "sportsbook_line",
                 "predicted_points",
+                "final_points",
                 "model_pick",
                 "bet_status",
+                "result_logged_at",
             ]
-            existing_cols = [col for col in preferred_cols if col in pending_df.columns]
+
+            existing_cols = [col for col in preferred_cols if col in display_df.columns]
             if existing_cols:
-                pending_df = pending_df[existing_cols]
+                display_df = display_df[existing_cols]
 
-            st.dataframe(pending_df, use_container_width=True, height=260)
-
-except Exception as e:
-    st.error(f"Could not load pending plays review: {e}")
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-
-st.markdown('<div class="section-card"><div class="section-title">Top Plays Today Preview</div>', unsafe_allow_html=True)
-
-odds_api_key = os.getenv("ODDS_API_KEY")
-
-if not odds_api_key:
-    st.warning("ODDS_API_KEY not found in environment.")
-else:
-    try:
-        status_box = st.empty()
-
-        with status_box.container():
-            st.markdown(
-                """
-                <div class="status-box">
-                    <div><span class="muted">Top Plays Status:</span> Starting build</div>
-                    <div><span class="muted">Step 1:</span> Loading odds feed and candidate props</div>
-                    <div><span class="muted">Step 2:</span> Scoring players against current lines</div>
-                    <div><span class="muted">Step 3:</span> Ranking strongest edges</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-        top_plays_df = get_top_plays_today_df(odds_api_key, debug=True)
-
-        status_box.empty()
-
-        if top_plays_df is None or top_plays_df.empty:
-            st.info("No top plays available right now.")
-        else:
-            st.success(f"Top plays board loaded: {len(top_plays_df)} rows")
-            st.dataframe(top_plays_df, use_container_width=True, height=360)
+            st.dataframe(display_df, use_container_width=True, height=420)
 
     except Exception as e:
-        st.error(f"Could not build top plays board: {e}")
+        st.error(f"Could not load Strong Plays table: {e}")
 
-st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown('<div class="section-card"><div class="section-title">Pending Plays Review</div>', unsafe_allow_html=True)
+
+    try:
+        strong_df = load_strong_plays_df()
+
+        if strong_df.empty or "bet_status" not in strong_df.columns:
+            st.info("No pending review data available.")
+        else:
+            pending_df = strong_df.copy()
+            pending_df["bet_status"] = pending_df["bet_status"].astype(str).str.strip().str.upper()
+            pending_df = pending_df[pending_df["bet_status"] == "PENDING"].copy()
+
+            if pending_df.empty:
+                st.success("No pending plays right now.")
+            else:
+                preferred_cols = [
+                    "PLAYER_NAME",
+                    "GAME_DATE",
+                    "sportsbook",
+                    "sportsbook_line",
+                    "predicted_points",
+                    "model_pick",
+                    "bet_status",
+                ]
+                existing_cols = [col for col in preferred_cols if col in pending_df.columns]
+                if existing_cols:
+                    pending_df = pending_df[existing_cols]
+
+                st.dataframe(pending_df, use_container_width=True, height=260)
+
+    except Exception as e:
+        st.error(f"Could not load pending plays review: {e}")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown('<div class="section-card"><div class="section-title">Top Plays Today Preview</div>', unsafe_allow_html=True)
+
+    odds_api_key = os.getenv("ODDS_API_KEY")
+
+    if not odds_api_key:
+        st.warning("ODDS_API_KEY not found in environment.")
+    else:
+        try:
+            status_box = st.empty()
+
+            with status_box.container():
+                st.markdown(
+                    """
+                    <div class="status-box">
+                        <div><span class="muted">Top Plays Status:</span> Starting build</div>
+                        <div><span class="muted">Step 1:</span> Loading odds feed and candidate props</div>
+                        <div><span class="muted">Step 2:</span> Scoring players against current lines</div>
+                        <div><span class="muted">Step 3:</span> Ranking strongest edges</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+            top_plays_df = get_top_plays_today_df(odds_api_key, debug=True)
+
+            status_box.empty()
+
+            if top_plays_df is None or top_plays_df.empty:
+                st.info("No top plays available right now.")
+            else:
+                st.success(f"Top plays board loaded: {len(top_plays_df)} rows")
+                st.dataframe(top_plays_df, use_container_width=True, height=360)
+
+        except Exception as e:
+            st.error(f"Could not build top plays board: {e}")
+
+    st.markdown("</div>", unsafe_allow_html=True)
