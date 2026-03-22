@@ -602,6 +602,15 @@ def format_game_clock(clock_value):
     except Exception:
         return text
 
+def format_commence_time(commence_time):
+    if not commence_time:
+        return "Time TBD"
+
+    try:
+        dt = pd.to_datetime(commence_time, utc=True).tz_convert("America/Chicago")
+        return dt.strftime("%b %d, %I:%M %p CT")
+    except Exception:
+        return str(commence_time)
 
 def format_game_status_short(status, live_stats=None):
     if live_stats:
@@ -1088,6 +1097,7 @@ try:
             line_text = f"{line_val:.1f}" if pd.notna(line_val) else "N/A"
             pred_text = f"{pred_val:.2f}" if pd.notna(pred_val) else "N/A"
             edge_text = f"{edge_val:+.2f}" if pd.notna(edge_val) else "N/A"
+            game_time_text = format_commence_time(row.get("commence_time", ""))
 
             href = f"?player={quote_plus(player_name)}&book={quote_plus(book_name)}"
 
@@ -1097,6 +1107,7 @@ try:
                     <div class="top-play-card">
                         <div class="top-play-title">{player_name} — {pick} {line_text}</div>
                         <div class="top-play-sub">{matchup}</div>
+                        <div class="top-play-meta">{game_time_text}</div>
                         <div class="top-play-meta">Projection: {pred_text} | Edge: {edge_text}</div>
                     </div>
                 </a>
