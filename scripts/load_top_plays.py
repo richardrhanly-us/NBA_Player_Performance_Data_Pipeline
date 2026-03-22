@@ -39,34 +39,22 @@ def get_top_plays_live_sheet():
     client = get_gsheet_client()
     return client.open_by_key(SHEET_KEY).worksheet("Top Plays Live")
 
-
 def update_top_plays_live_sheet(df):
     sheet = get_top_plays_live_sheet()
-    sheet.clear()
 
     if df is None or df.empty:
+        print("[TOP PLAYS] No data available -> writing placeholder", flush=True)
+        sheet.clear()
         sheet.update("A1", [["No data available"]])
-        return
+        return 0
 
-    output_df = df.copy()
+    print(f"[TOP PLAYS] Writing {len(df)} rows to Top Plays Live", flush=True)
 
-    preferred_cols = [
-        "PLAYER_NAME",
-        "sportsbook",
-        "sportsbook_line",
-        "predicted_points",
-        "edge",
-        "model_pick",
-        "home_team",
-        "away_team",
-        "commence_time",
-        "last_update",
-    ]
-    output_cols = [col for col in preferred_cols if col in output_df.columns]
-    output_df = output_df[output_cols]
+    sheet.clear()
+    sheet.update([df.columns.values.tolist()] + df.values.tolist())
 
-    data = [output_df.columns.tolist()] + output_df.values.tolist()
-    sheet.update("A1", data)
+    return len(df)
+
 
 
 def normalize_name(name: str) -> str:
@@ -538,13 +526,19 @@ def process_prop_row(
 
 
 def main():
+    print("[TOP PLAYS] ===== START WORKFLOW =====", flush=True)
     odds_api_key = os.environ["ODDS_API_KEY"]
+    events = fetch_upcoming_nba_events(odds_api_key)
+    event_count = len(events)
+    print(f"[TOP PLAYS] Events found: {event_count}", flush=True)
     model = load_model()
     load_model_stats()
     actual_name_to_id, normalized_to_actual = load_active_players()
     model_feature_names = list(getattr(model, "feature_names_in_", []))
 
     props_df = fetch_all_today_player_props(odds_api_key, BOOKMAKER_KEY)
+    props_count = len(props_df)
+    print(f"[TOP PLAYS] Props found: {props_count}", flush=True)
     if props_df.empty:
         print("No props found.", flush=True)
         update_top_plays_live_sheet(pd.DataFrame())
@@ -676,16 +670,22 @@ def main():
             )
             time.sleep(0.5)
 
+    scored_count = len(scored_map)
+    print(f"[TOP PLAYS] Scored rows: {scored_count}", flush=True)
     top_df = build_top_plays_live_df(scored_map)
 
     if top_df.empty:
-        print("No scored rows available for Top Plays Live.", flush=True)
-        update_top_plays_live_sheet(pd.DataFrame())
+        print("[TOP PLAYS] No qualifying top plays after filters", flush=True)
+        rows_written = update_top_plays_live_sheet(pd.DataFrame())
     else:
-        print(f"Writing {len(top_df)} top plays to Top Plays Live...", flush=True)
-        update_top_plays_live_sheet(top_df)
-
-    print(f"Done. Logged {logged_count} top plays.", flush=True)
+        print(f"[TOP PLAYS] Final top plays: {len(top_df)}", flush=True)
+        rows_written = update_top_plays_live_sheet(top_df)
+    
+    print(
+        f"[TOP PLAYS] DONE | events={event_count} | props={props_count} | "
+        f"scored={scored_count} | final={rows_written} | logged={logged_count}",
+        flush=True
+    )
 
 
 if __name__ == "__main__":
