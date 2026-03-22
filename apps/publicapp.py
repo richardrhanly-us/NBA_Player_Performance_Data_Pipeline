@@ -1,6 +1,8 @@
 import os
 import sys
 from urllib.parse import quote_plus
+import uuid
+from datetime import datetime
 
 import gspread
 import pandas as pd
@@ -36,6 +38,7 @@ except ImportError:
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 SHEET_KEY = "1uhjV_Si-qcILfNJbKZrD52y4JnT_GvqQ0hzN7POekQM"
+USAGE_LOG_SHEET_NAME = "Usage Log"
 
 TEAM_THEMES = {
     "ATL": {"primary": "#E03A3E", "secondary": "#C1D32F"},
@@ -85,6 +88,17 @@ if "selected_player_from_top_play" not in st.session_state:
 if "selected_book_from_top_play" not in st.session_state:
     st.session_state.selected_book_from_top_play = "draftkings"
 
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
+
+if "page_view_logged" not in st.session_state:
+    st.session_state.page_view_logged = False
+
+if "top_play_click_logged" not in st.session_state:
+    st.session_state.top_play_click_logged = False
+
+if "last_logged_search_key" not in st.session_state:
+    st.session_state.last_logged_search_key = None
 
 st.markdown(
     """
@@ -627,6 +641,56 @@ def format_game_status_short(status, live_stats=None):
     return str(status)
 
 
+
+def get_or_create_usage_worksheet(sheet_name, rows=5000, cols=10):
+    client = get_gsheet_client()
+    workbook = client.open_by_key(SHEET_KEY)
+
+    try:
+        return workbook.worksheet(sheet_name)
+    except gspread.WorksheetNotFound:
+        return workbook.add_worksheet(title=sheet_name, rows=rows, cols=cols)
+
+
+def ensure_usage_log_sheet():
+    ws = get_or_create_usage_worksheet(USAGE_LOG_SHEET_NAME)
+
+    existing_values = ws.get_all_values()
+    if not existing_values:
+        ws.update(
+            "A1:F1",
+            [[
+                "timestamp",
+                "event_type",
+                "session_id",
+                "player_name",
+                "sportsbook",
+                "details",
+            ]]
+        )
+
+    return ws
+
+
+def write_usage_log(event_type, session_id, player_name="", sportsbook="", details=""):
+    try:
+        ws = ensure_usage_log_sheet()
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        ws.append_row(
+            [
+                timestamp,
+                str(event_type),
+                str(session_id),
+                str(player_name),
+                str(sportsbook),
+                str(details),
+            ],
+            value_input_option="USER_ENTERED",
+        )
+    except Exception:
+        pass
+
 @st.cache_resource
 def get_gsheet_client():
     creds = Credentials.from_service_account_info(
@@ -786,6 +850,14 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
+if not st.session_state.page_view_logged:
+    write_usage_log(
+        event_type="page_view",
+        session_id=st.session_state.session_id,
+        details="publicapp_loaded"
+    )
+    st.session_state.page_view_logged = True
 
 top_games_win_rate, top_games_total = get_strong_plays_summary()
 health = get_strong_plays_health()
@@ -1005,6 +1077,16 @@ query_params = st.query_params
 query_player = query_params.get("player")
 query_book = query_params.get("book")
 
+if query_player and not st.session_state.top_play_click_logged:
+    write_usage_log(
+        event_type="top_play_click",
+        session_id=st.session_state.session_id,
+        player_name=query_player,
+        sportsbook=query_book or "",
+        details="from_top_3_or_top_plays"
+    )
+    st.session_state.top_play_click_logged = True
+
 _, player_names = get_player_lookup()
 
 default_player = query_player or st.session_state.get("selected_player_from_top_play")
@@ -1083,6 +1165,18 @@ else:
 if selected_player:
     with st.spinner("Building projection..."):
         result = build_prediction(selected_player, float(sportsbook_line))
+
+search_key = f"{selected_player}|{selected_book}|{sportsbook_line}"
+
+if st.session_state.last_logged_search_key != search_key:
+    write_usage_log(
+        event_type="search",
+        session_id=st.session_state.session_id,
+        player_name=selected_player,
+        sportsbook=selected_book,
+        details=f"line={sportsbook_line}"
+    )
+    st.session_state.last_logged_search_key = search_key
 
     game_is_final = False
     if result.get("live_stats"):
