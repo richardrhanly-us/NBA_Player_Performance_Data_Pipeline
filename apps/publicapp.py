@@ -74,6 +74,7 @@ st.set_page_config(
     page_icon="🏀",
     layout="centered",
 )
+st.autorefresh(interval=15000, key="live_refresh")
 
 st.markdown("""
 <style>
@@ -512,7 +513,7 @@ def get_player_lookup():
     return actual_name_to_id, player_names
 
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=10)
 def build_prediction(player_name, sportsbook_line):
     model = load_model()
     model_stats = load_model_stats()
