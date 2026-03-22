@@ -450,30 +450,30 @@ def get_live_adjusted_projection(predicted_points, live_stats):
 
     current_points = live_stats.get("points")
     minutes_played = parse_minutes_to_float(live_stats.get("minutes"))
+    game_minutes_remaining = live_stats.get("game_minutes_remaining")
 
     try:
         current_points = float(current_points)
     except Exception:
         return predicted_points
 
-    if minutes_played is None or minutes_played <= 0:
+    try:
+        game_minutes_remaining = float(game_minutes_remaining)
+    except Exception:
+        game_minutes_remaining = None
+
+    if game_minutes_remaining is None:
         return predicted_points
 
-    regulation_minutes = 48.0
-    remaining_minutes = max(regulation_minutes - minutes_played, 0.0)
-
-    # End-game clamp: projection should stay very close to current points
-    if remaining_minutes <= 0.25:   # 15 seconds or less
+    if game_minutes_remaining <= 0:
         return current_points
-    if remaining_minutes <= 1.0:    # last minute
-        return current_points + 0.5
-    if remaining_minutes <= 2.0:    # last 2 minutes
-        return current_points + 1.5
 
-    pregame_points_per_min = predicted_points / regulation_minutes
+    if minutes_played is None or minutes_played <= 0:
+        return max(predicted_points, current_points)
+
+    pregame_points_per_min = predicted_points / 48.0
     live_points_per_min = current_points / minutes_played
 
-    # Blend current pace with pregame expectation
     live_weight = min(max(minutes_played / 24.0, 0.25), 0.75)
     pregame_weight = 1.0 - live_weight
 
@@ -482,19 +482,19 @@ def get_live_adjusted_projection(predicted_points, live_stats):
         (live_points_per_min * live_weight)
     )
 
-    adjusted_projection = current_points + (blended_points_per_min * remaining_minutes)
-
-    # Never below current points
+    adjusted_projection = current_points + (blended_points_per_min * game_minutes_remaining)
     adjusted_projection = max(adjusted_projection, current_points)
 
-    # Never exceed a reasonable late-game cap
-    if remaining_minutes <= 6:
-        adjusted_projection = min(adjusted_projection, current_points + 4)
-    if remaining_minutes <= 3:
-        adjusted_projection = min(adjusted_projection, current_points + 2)
+    if game_minutes_remaining <= 0.25:
+        return current_points
+    if game_minutes_remaining <= 1.0:
+        return min(adjusted_projection, current_points + 0.75)
+    if game_minutes_remaining <= 2.0:
+        return min(adjusted_projection, current_points + 1.5)
+    if game_minutes_remaining <= 4.0:
+        return min(adjusted_projection, current_points + 3.0)
 
     return adjusted_projection
-
 
 @st.cache_resource
 def get_gsheet_client():
@@ -1016,7 +1016,7 @@ if selected_player:
 
         if live_stats:
             st.markdown("#### Live Game Status")
-            live_col1, live_col2, live_col3 = st.columns(3)
+            live_col1, live_col2, live_col3, live_col4 = st.columns(4)
 
             with live_col1:
                 st.markdown(
@@ -1046,6 +1046,17 @@ if selected_player:
                     <div class="mini-card">
                         <div class="mini-title">Game Status</div>
                         <div class="mini-value">{safe_live_display(live_stats.get('game_status', 'Recent Game'))}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+            with live_col4:
+                st.markdown(
+                    f"""
+                    <div class="mini-card">
+                        <div class="mini-title">Game Clock</div>
+                        <div class="mini-value">{safe_live_display(live_stats.get('game_clock', 'N/A'))}</div>
                     </div>
                     """,
                     unsafe_allow_html=True
