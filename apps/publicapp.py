@@ -1266,122 +1266,108 @@ if selected_player:
         edge_text = f"{edge:+.2f}" if edge is not None else "N/A"
         projection_label = "Live Adjusted Projection" if live_stats else "Predicted Points"
 
-# =========================
-# PLAYER HEADER (ADD THIS ABOVE model_card_html)
-# =========================
+        headshot_url = result.get("headshot_url")
 
-headshot_url = result.get("headshot_url")
-
-player_header_html = f"""
-<div style="display:flex; align-items:center; gap:16px; margin-bottom:12px;">
-    
-    <img 
-        src="{headshot_url}" 
-        style="
-            width:72px;
-            height:72px;
-            border-radius:16px;
-            object-fit:cover;
-            border:1px solid rgba(255,255,255,0.12);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-        "
-        onerror="this.style.display='none';"
-    >
-
-    <div>
-        <div class="model-title" style="margin-bottom:4px;">
-            {result["actual_name"]}
-        </div>
-        <div class="model-subtitle">
-            Model Output
-        </div>
-    </div>
-
-</div>
-"""
-
-
-# =========================
-# MODEL CARD HTML (DROP-IN REPLACEMENT)
-# =========================
-
-model_card_html = f"""
-<div class="model-card" 
-     style="background:{model_bg};
-            border:2px solid {hex_to_rgba(model_border,0.95)};
-            box-shadow:0 0 1px rgba(255,255,255,0.04),0 0 22px {model_glow};">
-
-    {player_header_html}
-
-    <div class="model-main">
-
-        <div class="model-stat">
-            <div class="model-stat-label">{projection_label}</div>
-            <div class="model-stat-value">{result["predicted_points"]:.2f}</div>
-        </div>
-
-        <div class="model-stat">
-            <div class="model-stat-label">Sportsbook Line</div>
-            <div class="model-stat-value">{sportsbook_line:.1f}</div>
-        </div>
-
-        <div class="model-stat">
-            <div class="model-stat-label">Model Edge</div>
-            <div class="model-stat-value">{edge_text}</div>
-        </div>
-
-        <div class="model-stat">
-            <div class="model-stat-label">Probability Split</div>
-            <div class="model-stat-value">{probability_text}</div>
-        </div>
-
-    </div>
-
-    <div class="small-note">{interpretation_text}</div>
-
-    <div class="pick-banner"
-         style="background:{pick_bg}; border:2px solid {pick_border}; color:{pick_text_color};">
-        {pick_text}
-    </div>
-
-    <div class="small-note">
-        Trained regression model output compared against the current sportsbook line.
-    </div>
-
-</div>
-"""
-
-st.markdown(model_card_html, unsafe_allow_html=True)
-
-
-if live_stats and base_predicted_points is not None:
-    st.caption(
-        f"Pregame model: {base_predicted_points:.2f} | "
-        f"Live-adjusted projection: {predicted_points:.2f}"
-    )
-
-
-if over_prob is not None and under_prob is not None:
-    prob_col1, prob_col2 = st.columns(2)
-
-    with prob_col1:
-        st.markdown(
-            f"""
-            <div class="mini-card">
-                <div class="mini-title">Over Probability</div>
-                <div class="mini-value">{over_prob * 100:.1f}%</div>
+        player_header_html = f"""
+        <div style="display:flex; align-items:center; gap:16px; margin-bottom:12px;">
+            <img
+                src="{headshot_url}"
+                style="
+                    width:72px;
+                    height:72px;
+                    border-radius:16px;
+                    object-fit:cover;
+                    border:1px solid rgba(255,255,255,0.12);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+                "
+                onerror="this.style.display='none';"
+            >
+            <div>
+                <div class="model-title" style="margin-bottom:4px;">
+                    {result["actual_name"]}
+                </div>
+                <div class="model-subtitle">
+                    Model Output
+                </div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        </div>
+        """
 
-    with prob_col2:
-        st.markdown(
-            f"""
-            <div class="mini-card">
-                <div class="mini-title">Under Probability</div>
-                <div class="mini-value">{under_prob * 100:.1f}%</div>
+        model_card_html = f"""
+        <div class="model-card"
+             style="background:{model_bg};
+                    border:2px solid {hex_to_rgba(model_border,0.95)};
+                    box-shadow:0 0 1px rgba(255,255,255,0.04),0 0 22px {model_glow};">
+
+            {player_header_html}
+
+            <div class="model-main">
+
+                <div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
+                    <div class="model-stat-label" style="color:{model_label_color};">{projection_label}</div>
+                    <div class="model-stat-value">{predicted_points:.2f}</div>
+                </div>
+
+                <div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
+                    <div class="model-stat-label" style="color:{model_label_color};">Sportsbook Line</div>
+                    <div class="model-stat-value">{sportsbook_line:.1f}</div>
+                </div>
+
+                <div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
+                    <div class="model-stat-label" style="color:{model_label_color};">Model Edge</div>
+                    <div class="model-stat-value">{edge_text}</div>
+                </div>
+
+                <div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
+                    <div class="model-stat-label" style="color:{model_label_color};">Probability Split</div>
+                    <div class="model-stat-value">{probability_text}</div>
+                </div>
+
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+
+            <div class="small-note">{interpretation_text}</div>
+
+            <div class="pick-banner"
+                 style="background:{pick_bg};border:2px solid {pick_border};color:{pick_text_color};">
+                {pick_text}
+            </div>
+
+            <div class="small-note">
+                Trained regression model output compared against the current sportsbook line.
+            </div>
+
+        </div>
+        """
+
+        st.markdown(model_card_html, unsafe_allow_html=True)
+
+        if live_stats and base_predicted_points is not None:
+            st.caption(
+                f"Pregame model: {base_predicted_points:.2f} | "
+                f"Live-adjusted projection: {predicted_points:.2f}"
+            )
+
+        if over_prob is not None and under_prob is not None:
+            prob_col1, prob_col2 = st.columns(2)
+
+            with prob_col1:
+                st.markdown(
+                    f"""
+                    <div class="mini-card">
+                        <div class="mini-title">Over Probability</div>
+                        <div class="mini-value">{over_prob * 100:.1f}%</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            with prob_col2:
+                st.markdown(
+                    f"""
+                    <div class="mini-card">
+                        <div class="mini-title">Under Probability</div>
+                        <div class="mini-value">{under_prob * 100:.1f}%</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
