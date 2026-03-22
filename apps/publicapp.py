@@ -353,6 +353,22 @@ st.markdown("""
         margin-bottom: 0.35rem;
     }
 
+        div[data-testid="stSpinner"] {
+        display: none !important;
+    }
+
+    .stSpinner {
+        display: none !important;
+    }
+
+    .line-loading {
+        color: #94a3b8;
+        font-size: 0.9rem;
+        margin-top: 0.35rem;
+        margin-bottom: 0.35rem;
+    }
+    
+
     @media (max-width: 640px) {
         .hero-title {
             font-size: 1.7rem;
