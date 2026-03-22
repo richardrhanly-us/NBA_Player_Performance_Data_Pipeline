@@ -270,7 +270,7 @@ def load_active_players():
     print(f"Active players mapped: {len(actual_name_to_id)}", flush=True)
     return actual_name_to_id, normalized_to_actual
 
-@st.cache_data(ttl=900)
+
 def get_player_gamelog_df(player_id, season):
     for attempt in range(4):
         try:
