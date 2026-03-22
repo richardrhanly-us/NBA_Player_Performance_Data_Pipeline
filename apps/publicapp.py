@@ -1355,11 +1355,6 @@ model_card_html = f"""
 </div>
 """
 
-<div class="model-main">
-<div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
-<div class="model-stat-label" style="color:{model_label_color};">{projection_label}</div>
-<div class="model-stat-value">{predicted_points:.2f}</div>
-</div>
 
 <div class="model-stat" style="background:{model_stat_bg};border:1px solid {model_stat_border};">
 <div class="model-stat-label" style="color:{model_label_color};">Sportsbook Line</div>
