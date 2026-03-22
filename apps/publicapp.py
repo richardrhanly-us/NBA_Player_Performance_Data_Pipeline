@@ -462,9 +462,18 @@ def get_live_adjusted_projection(predicted_points, live_stats):
     regulation_minutes = 48.0
     remaining_minutes = max(regulation_minutes - minutes_played, 0.0)
 
+    # End-game clamp: projection should stay very close to current points
+    if remaining_minutes <= 0.25:   # 15 seconds or less
+        return current_points
+    if remaining_minutes <= 1.0:    # last minute
+        return current_points + 0.5
+    if remaining_minutes <= 2.0:    # last 2 minutes
+        return current_points + 1.5
+
     pregame_points_per_min = predicted_points / regulation_minutes
     live_points_per_min = current_points / minutes_played
 
+    # Blend current pace with pregame expectation
     live_weight = min(max(minutes_played / 24.0, 0.25), 0.75)
     pregame_weight = 1.0 - live_weight
 
@@ -474,7 +483,15 @@ def get_live_adjusted_projection(predicted_points, live_stats):
     )
 
     adjusted_projection = current_points + (blended_points_per_min * remaining_minutes)
+
+    # Never below current points
     adjusted_projection = max(adjusted_projection, current_points)
+
+    # Never exceed a reasonable late-game cap
+    if remaining_minutes <= 6:
+        adjusted_projection = min(adjusted_projection, current_points + 4)
+    if remaining_minutes <= 3:
+        adjusted_projection = min(adjusted_projection, current_points + 2)
 
     return adjusted_projection
 
