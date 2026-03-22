@@ -811,7 +811,7 @@ try:
                 """,
                 unsafe_allow_html=True
             )
-    st.markdown('<div class="section-card"><div class="section-title">Top Plays Today</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-card"><div class="section-title">Top Plays Today</div>', unsafe_allow_html=True)
         display_cols = [
             col for col in [
                 "PLAYER_NAME",
