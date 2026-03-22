@@ -701,13 +701,68 @@ with operations_tab:
 
     with row2_col1:
         if st.button("📈 Rebuild Top Plays Live", use_container_width=True):
-            status_placeholder.info("Top Plays Live rebuild is not wired yet.")
-            write_admin_log(
-                action="rebuild_top_plays_live",
-                source="admin_manual",
-                status="pending",
-                details="Button clicked, backend function not wired yet."
-            )
+            status_placeholder.info("Rebuilding Top Plays Live from current odds feed...")
+    
+            try:
+                odds_api_key = st.secrets["ODDS_API_KEY"]
+    
+                top_plays_df = get_top_plays_today_df(odds_api_key, debug=True)
+    
+                if top_plays_df is None or top_plays_df.empty:
+                    status_placeholder.warning("Rebuild finished, but no qualifying top plays were found.")
+    
+                    write_admin_log(
+                        action="rebuild_top_plays_live",
+                        source="admin_manual",
+                        status="success",
+                        details="Manual rebuild ran successfully, but no qualifying top plays were found."
+                    )
+                else:
+                    top_sheet = get_or_create_worksheet("Top Plays Live", rows=1000, cols=20)
+    
+                    output_df = top_plays_df.copy()
+    
+                    preferred_cols = [
+                        "PLAYER_NAME",
+                        "sportsbook",
+                        "sportsbook_line",
+                        "predicted_points",
+                        "edge",
+                        "model_pick",
+                        "home_team",
+                        "away_team",
+                        "commence_time",
+                    ]
+    
+                    output_cols = [col for col in preferred_cols if col in output_df.columns]
+                    output_df = output_df[output_cols]
+    
+                    data = [output_df.columns.tolist()] + output_df.values.tolist()
+    
+                    top_sheet.clear()
+                    top_sheet.update("A1", data)
+    
+                    status_placeholder.success(
+                        f"Top Plays Live rebuild complete: {len(output_df)} rows written."
+                    )
+    
+                    write_admin_log(
+                        action="rebuild_top_plays_live",
+                        source="admin_manual",
+                        status="success",
+                        details=f"Manual rebuild completed and wrote {len(output_df)} rows to Top Plays Live."
+                    )
+    
+                st.cache_data.clear()
+    
+            except Exception as e:
+                write_admin_log(
+                    action="rebuild_top_plays_live",
+                    source="admin_manual",
+                    status="failed",
+                    details=str(e)
+                )
+                status_placeholder.error(f"Top Plays rebuild failed: {e}")
 
     with row2_col2:
         if st.button("🔄 Refresh App State", use_container_width=True):
