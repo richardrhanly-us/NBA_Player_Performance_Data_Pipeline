@@ -9,6 +9,7 @@ def log(msg):
     print(msg, flush=True)
 
 if __name__ == "__main__":
+    log("[UPDATE RESULTS] ===== START WORKFLOW =====")
     result = update_all_pending_sheet_results(debug=False)
 
     if isinstance(result, tuple):
