@@ -278,6 +278,13 @@ def update_all_pending_sheet_results(
         rows_scanned += 1
         sheet_row_number = idx + 2
 
+        if not debug and (rows_scanned % 10 == 0 or rows_scanned == total_rows):
+            print(
+                f"[UPDATE RESULTS] Scanned {rows_scanned}/{total_rows} rows | "
+                f"pending found={pending_rows_found} | updated={updated_count}",
+                flush=True,
+            )
+
         player_name = str(row.get("PLAYER_NAME", "")).strip()
         game_date = str(row.get("GAME_DATE", "")).strip()
         sportsbook_line = row.get("sportsbook_line", "")
@@ -448,6 +455,19 @@ def update_all_pending_sheet_results(
             unsafe_allow_html=True
         )
         progress_bar.progress(1.0)
+
+    if debug:
+        return result
+
+    if not debug:
+        print(
+            f"[UPDATE RESULTS] DONE | scanned={rows_scanned} | "
+            f"pending={pending_rows_found} | updated={updated_count} | "
+            f"skipped_not_final={rows_skipped_not_final} | "
+            f"skipped_missing_player_date={rows_skipped_missing_player_date} | "
+            f"skipped_other={rows_skipped_other}",
+            flush=True,
+        )
 
     if debug:
         return result
