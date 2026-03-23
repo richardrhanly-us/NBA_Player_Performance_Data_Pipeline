@@ -194,7 +194,7 @@ def append_manual_play_to_sheet1(player_name, sportsbook_key, sportsbook_line=No
 
     model_pick = "OVER" if predicted_points > sportsbook_line else "UNDER"
 
-    sheet = get_results_sheet()
+    sheet = get_strong_plays_sheet()
     values = sheet.get_all_values()
     next_row = len(values) + 1 if values else 2
 
