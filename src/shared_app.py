@@ -302,6 +302,75 @@ def append_manual_play_to_sheet1(
     }
 
 
+def append_play_to_strong_plays(
+    player_name,
+    game_date,
+    sportsbook_line,
+    sportsbook,
+    predicted_points,
+    model_pick,
+    last_update="",
+    edge=None
+):
+    actual_name = str(player_name).strip()
+    game_date = str(game_date).strip()
+    sportsbook = format_sportsbook_name(sportsbook)
+    sportsbook_line = float(sportsbook_line)
+    predicted_points = float(predicted_points)
+    model_pick = str(model_pick).strip().upper()
+
+    if edge is None:
+        edge = round(predicted_points - sportsbook_line, 2)
+    else:
+        edge = float(edge)
+
+    captured_at = pd.Timestamp.now(tz="America/Chicago").strftime("%Y-%m-%d %H:%M:%S")
+
+    sheet = get_strong_plays_sheet()
+    values = sheet.get_all_values()
+    next_row = len(values) + 1 if values else 2
+
+    row_values = [[
+        actual_name,                 # A PLAYER_NAME
+        game_date,                   # B GAME_DATE
+        sportsbook_line,             # C sportsbook_line
+        sportsbook,                  # D sportsbook
+        last_update,                 # E last_update
+        round(predicted_points, 2),  # F predicted_points
+        "",                          # G final_points
+        "",                          # H line_result
+        model_pick,                  # I model_pick
+        "",                          # J model_result
+        "",                          # K result_logged_at
+        "",                          # L profit
+        edge,                        # M edge
+        "PENDING",                   # N bet_status
+        "",                          # O strong_cumulative_profit
+        "",                          # P total_bets
+        "",                          # Q wins
+        "",                          # R losses
+        "",                          # S win_rate
+        "",                          # T total_units
+        "",                          # U ROI
+        "",                          # V closing_line
+        "",                          # W clv
+        captured_at,                 # X captured_at
+    ]]
+
+    sheet.update(range_name=f"A{next_row}:X{next_row}", values=row_values)
+    clear_app_caches()
+
+    return {
+        "player_name": actual_name,
+        "game_date": game_date,
+        "sportsbook": sportsbook,
+        "sportsbook_line": sportsbook_line,
+        "predicted_points": round(predicted_points, 2),
+        "edge": edge,
+        "model_pick": model_pick,
+        "sheet_row": next_row,
+    }
+
 @st.cache_data(ttl=120)
 def get_sheet_records_df():
     sheet = get_results_sheet()
