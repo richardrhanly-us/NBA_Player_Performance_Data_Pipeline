@@ -13,6 +13,8 @@ from src.shared_app import (
     SHEET_KEY,
 )
 
+def log(msg):
+    print(msg, flush=True)
 
 def already_logged(records_df, player_name, game_date, sportsbook, line):
     if records_df is None or records_df.empty:
