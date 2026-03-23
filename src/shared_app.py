@@ -7,7 +7,6 @@ import pandas as pd
 import unicodedata
 import gspread
 import streamlit as st
-st.title("Bare app works")
 
 from datetime import datetime
 from google.oauth2.service_account import Credentials
@@ -24,7 +23,7 @@ EDGE_THRESHOLD = 3.0
 
 RESULTS_SHEET_NAME = "Sheet1"
 STRONG_PLAYS_SHEET_NAME = "Strong Plays"
-
+HISTORICAL_LINES_SHEET_NAME = "Historical Lines"
 
 
 def normalize_name(name: str) -> str:
@@ -50,6 +49,18 @@ def safe_float(value):
         return float(value)
     except Exception:
         return None
+
+
+def clear_app_caches():
+    try:
+        st.cache_data.clear()
+    except Exception:
+        pass
+
+    try:
+        st.cache_resource.clear()
+    except Exception:
+        pass
 
 
 def parse_game_clock_to_minutes(clock_value):
@@ -108,6 +119,33 @@ def compute_game_minutes_remaining(period, game_clock_minutes):
     return (5.0 * overtime_periods_left) + game_clock_minutes
 
 
+def format_sportsbook_name(book_name):
+    text = str(book_name or "").strip()
+    lower = text.lower()
+
+    if lower == "draftkings":
+        return "DraftKings"
+    if lower == "fanduel":
+        return "FanDuel"
+    if lower == "betmgm":
+        return "BetMGM"
+    if lower == "espnbet":
+        return "ESPNBet"
+    if lower == "betrivers":
+        return "BetRivers"
+    if lower == "hardrockbet":
+        return "HardRockBet"
+
+    return text.title() if text else ""
+
+
+def format_event_game_date(commence_time):
+    try:
+        return pd.to_datetime(commence_time, utc=True).tz_convert("US/Central").strftime("%B %d, %Y")
+    except Exception:
+        return pd.Timestamp.now(tz="US/Central").strftime("%B %d, %Y")
+
+
 @st.cache_resource
 def get_gsheet_client():
     service_account_info = None
@@ -140,29 +178,36 @@ def get_gsheet_client():
 
 
 @st.cache_resource
-def get_gsheet():
+def get_worksheet(sheet_name):
     client = get_gsheet_client()
-    return client.open_by_key(SHEET_KEY).sheet1
+    return client.open_by_key(SHEET_KEY).worksheet(sheet_name)
 
-HISTORICAL_LINES_SHEET_NAME = "Historical Lines"
 
 @st.cache_resource
 def get_historical_lines_sheet():
-    client = get_gsheet_client()
-    return client.open_by_key(SHEET_KEY).worksheet(HISTORICAL_LINES_SHEET_NAME)
+    return get_worksheet(HISTORICAL_LINES_SHEET_NAME)
+
 
 @st.cache_resource
 def get_strong_plays_sheet():
-    client = get_gsheet_client()
-    return client.open_by_key(SHEET_KEY).worksheet(STRONG_PLAYS_SHEET_NAME)
+    return get_worksheet(STRONG_PLAYS_SHEET_NAME)
 
 
 @st.cache_resource
 def get_results_sheet():
-    client = get_gsheet_client()
-    return client.open_by_key(SHEET_KEY).worksheet(RESULTS_SHEET_NAME)
+    return get_worksheet(RESULTS_SHEET_NAME)
 
-def append_manual_play_to_sheet1(player_name, sportsbook_key, sportsbook_line=None):
+
+def append_manual_play_to_sheet1(
+    player_name,
+    game_date=None,
+    sportsbook_line=None,
+    sportsbook=None,
+    predicted_points=None,
+    model_pick=None,
+    sportsbook_key=None,
+    last_update=""
+):
     actual_name_to_id, normalized_to_actual = load_active_players()
     normalized = normalize_name(player_name)
     actual_name = normalized_to_actual.get(normalized, player_name)
@@ -171,73 +216,110 @@ def append_manual_play_to_sheet1(player_name, sportsbook_key, sportsbook_line=No
     if not player_id:
         raise ValueError(f"No active player id found for {player_name}")
 
-    df = get_player_gamelog_df(player_id, CURRENT_SEASON)
-    if df is None or df.empty:
-        raise ValueError(f"Could not load gamelog for {actual_name}")
+    sportsbook_lookup = sportsbook_key or sportsbook or BOOKMAKER_KEY
+    line_data = None
 
-    X = build_player_feature_row(df, actual_name)
-    if X is None or X.empty:
-        raise ValueError(f"Not enough data to build features for {actual_name}")
+    if predicted_points is None or model_pick is None or sportsbook_line is None:
+        df = get_player_gamelog_df(player_id, CURRENT_SEASON)
+        if df is None or df.empty:
+            raise ValueError(f"Could not load gamelog for {actual_name}")
 
-    model = load_model()
-    model_feature_names = list(getattr(model, "feature_names_in_", []))
-    if model_feature_names:
-        X = X.reindex(columns=model_feature_names, fill_value=0)
+        X = build_player_feature_row(df, actual_name)
+        if X is None or X.empty:
+            raise ValueError(f"Not enough data to build features for {actual_name}")
 
-    predicted_points = float(model.predict(X)[0])
+        model = load_model()
+        model_feature_names = list(getattr(model, "feature_names_in_", []))
+        if model_feature_names:
+            X = X.reindex(columns=model_feature_names, fill_value=0)
 
-    line_data = get_player_points_lines(actual_name, sportsbook_key)
+        predicted_points = float(model.predict(X)[0])
 
-    if sportsbook_line is None:
-        if not line_data or line_data.get("points_line") is None:
-            raise ValueError(f"No live {sportsbook_key} line found for {actual_name}")
-        sportsbook_line = float(line_data["points_line"])
-    else:
-        sportsbook_line = float(sportsbook_line)
+        line_data = get_player_points_lines(actual_name, sportsbook_lookup)
 
-    model_pick = "OVER" if predicted_points > sportsbook_line else "UNDER"
+        if sportsbook_line is None:
+            if not line_data or line_data.get("points_line") is None:
+                raise ValueError(f"No live {sportsbook_lookup} line found for {actual_name}")
+            sportsbook_line = float(line_data["points_line"])
+        else:
+            sportsbook_line = float(sportsbook_line)
+
+        model_pick = "OVER" if predicted_points > sportsbook_line else "UNDER"
+
+    sportsbook_line = float(sportsbook_line)
+    predicted_points = float(predicted_points)
+    model_pick = str(model_pick).strip().upper()
+
+    if not game_date:
+        if line_data and line_data.get("commence_time"):
+            game_date = format_event_game_date(line_data.get("commence_time"))
+        else:
+            game_date = pd.Timestamp.now(tz="America/Chicago").strftime("%B %d, %Y")
+
+    if not sportsbook:
+        if line_data and line_data.get("sportsbook"):
+            sportsbook = line_data.get("sportsbook")
+        else:
+            sportsbook = sportsbook_lookup
+
+    sportsbook = format_sportsbook_name(sportsbook)
+
+    if not last_update and line_data:
+        last_update = line_data.get("last_update", "") or ""
+
+    edge = round(predicted_points - sportsbook_line, 2)
+    captured_at = pd.Timestamp.now(tz="America/Chicago").strftime("%Y-%m-%d %H:%M:%S")
 
     sheet = get_strong_plays_sheet()
     values = sheet.get_all_values()
     next_row = len(values) + 1 if values else 2
 
-    last_update = ""
-    if line_data:
-        last_update = line_data.get("last_update", "") or ""
-
-    game_date = pd.Timestamp.now(tz="America/Chicago").strftime("%B %d, %Y")
-
     row_values = [[
-        actual_name,
-        game_date,
-        sportsbook_line,
-        "DraftKings" if sportsbook_key.lower() == "draftkings" else sportsbook_key.title(),
-        last_update,
-        round(predicted_points, 2),
-        "",
-        "",
-        model_pick,
-        "",
-        "",
+        actual_name,                 # A PLAYER_NAME
+        str(game_date),              # B GAME_DATE
+        sportsbook_line,             # C sportsbook_line
+        sportsbook,                  # D sportsbook
+        last_update,                 # E last_update
+        round(predicted_points, 2),  # F predicted_points
+        "",                          # G final_points
+        "",                          # H line_result
+        model_pick,                  # I model_pick
+        "",                          # J model_result
+        "",                          # K result_logged_at
+        "",                          # L profit
+        edge,                        # M edge
+        "PENDING",                   # N bet_status
+        "",                          # O strong_cumulative_profit
+        "",                          # P total_bets
+        "",                          # Q wins
+        "",                          # R losses
+        "",                          # S win_rate
+        "",                          # T total_units
+        "",                          # U ROI
+        "",                          # V closing_line
+        "",                          # W clv
+        captured_at,                 # X captured_at
     ]]
 
-    sheet.update(range_name=f"A{next_row}:K{next_row}", values=row_values)
-    st.cache_data.clear()
+    sheet.update(range_name=f"A{next_row}:X{next_row}", values=row_values)
+    clear_app_caches()
 
     return {
         "player_name": actual_name,
-        "sportsbook": sportsbook_key,
+        "sportsbook": sportsbook,
         "sportsbook_line": sportsbook_line,
         "predicted_points": round(predicted_points, 2),
-        "edge": round(predicted_points - sportsbook_line, 2),
+        "edge": edge,
         "model_pick": model_pick,
         "sheet_row": next_row,
     }
 
+
 @st.cache_data(ttl=120)
 def get_sheet_records_df():
-    sheet = get_gsheet()
+    sheet = get_results_sheet()
     values = sheet.get_all_values()
+
     if not values or len(values) < 2:
         return pd.DataFrame()
 
@@ -311,6 +393,7 @@ def get_strong_plays_health():
         "last_update": last_update
     }
 
+
 def populate_closing_lines_and_clv(strong_df, historical_df):
     if strong_df is None or strong_df.empty:
         return strong_df
@@ -375,6 +458,7 @@ def populate_closing_lines_and_clv(strong_df, historical_df):
             strong_df.at[idx, "clv"] = round(bet_line - closing_line, 2)
 
     return strong_df
+
 
 @st.cache_resource
 def load_model():
@@ -691,6 +775,7 @@ def fetch_all_today_player_props(api_key, bookmaker_key):
 
         for bookmaker in event_odds.get("bookmakers", []):
             book_title = bookmaker.get("title", "Unknown")
+            book_key = bookmaker.get("key", bookmaker_key)
 
             for market in bookmaker.get("markets", []):
                 if market.get("key") != "player_points":
@@ -730,6 +815,7 @@ def fetch_all_today_player_props(api_key, bookmaker_key):
                         "player_name_raw": item["player_name_raw"],
                         "line": item["line"],
                         "bookmaker": book_title,
+                        "bookmaker_key": str(book_key).lower(),
                         "last_update": market_last_update,
                         "home_team": home_team,
                         "away_team": away_team,
@@ -742,7 +828,9 @@ def fetch_all_today_player_props(api_key, bookmaker_key):
         return pd.DataFrame()
 
     df = pd.DataFrame(rows)
-    df = df.drop_duplicates(subset=["player_name_raw", "line", "bookmaker"]).reset_index(drop=True)
+    df = df.drop_duplicates(
+        subset=["player_name_raw", "line", "bookmaker_key", "commence_time"]
+    ).reset_index(drop=True)
     return df
 
 
@@ -769,17 +857,22 @@ def get_available_sportsbooks():
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_player_points_lines(player_name, bookmaker_key):
-    try:
-        api_key = st.secrets["ODDS_API_KEY"]
-    except Exception:
-        return None
+    api_key = None
 
     try:
-        props_df = fetch_all_today_player_props(api_key, bookmaker_key)
+        if "ODDS_API_KEY" in st.secrets:
+            api_key = st.secrets["ODDS_API_KEY"]
     except Exception:
+        pass
+
+    if not api_key:
+        api_key = os.environ.get("ODDS_API_KEY")
+
+    if not api_key:
         return None
 
-    if props_df is None or props_df.empty:
+    props_df = fetch_all_today_player_props(api_key, bookmaker_key)
+    if props_df.empty:
         return None
 
     props_df = props_df.copy()
@@ -826,17 +919,18 @@ def get_player_points_lines(player_name, bookmaker_key):
 
     row = player_df.iloc[0]
 
-
     return {
         "player_name": row.get(name_col),
         "points_line": float(row.get("line")),
-        "sportsbook": row.get("sportsbook", bookmaker_key),
+        "sportsbook": row.get("bookmaker", bookmaker_key),
         "last_update": row.get("last_update", ""),
         "home_team": row.get("home_team"),
         "away_team": row.get("away_team"),
+        "commence_time": row.get("commence_time", ""),
         "over_price": row.get("over_price"),
         "under_price": row.get("under_price"),
     }
+
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_top_plays_today_df(api_key, debug=False):
@@ -984,8 +1078,7 @@ def get_final_points_from_gamelog(player_name, game_date):
 
 
 def get_worksheet_with_df(sheet_name):
-    client = get_gsheet_client()
-    ws = client.open_by_key(SHEET_KEY).worksheet(sheet_name)
+    ws = get_worksheet(sheet_name)
     values = ws.get_all_values()
 
     if not values:
@@ -1095,7 +1188,7 @@ def update_sheet_with_final_result(
         return False
 
     worksheet.batch_update(batch_payload)
-    st.cache_data.clear()
+    clear_app_caches()
     return True
 
 
@@ -1144,19 +1237,19 @@ def update_all_pending_sheet_results(debug=False):
         )
 
     header_index_map = build_header_index_map(headers)
-    
+
     historical_ws = get_historical_lines_sheet()
     historical_values = historical_ws.get_all_values()
-    
+
     if historical_values and len(historical_values) > 1:
         historical_headers = [str(h).strip() for h in historical_values[0]]
         historical_rows = historical_values[1:]
         historical_df = pd.DataFrame(historical_rows, columns=historical_headers)
     else:
         historical_df = pd.DataFrame()
-    
+
     df = populate_closing_lines_and_clv(df, historical_df)
-    
+
     updated_count = 0
     checked_count = 0
     rows_scanned = 0
@@ -1256,8 +1349,10 @@ def update_all_pending_sheet_results(debug=False):
                     "details": "No final points found in player gamelog",
                 })
             continue
+
         closing_line = row.get("closing_line", "")
         clv = row.get("clv", "")
+
         try:
             success = update_sheet_with_final_result(
                 worksheet=worksheet,
@@ -1303,7 +1398,7 @@ def update_all_pending_sheet_results(debug=False):
                     "details": str(e),
                 })
 
-    st.cache_data.clear()
+    clear_app_caches()
 
     result = {
         "source_sheet": source_sheet_name,
