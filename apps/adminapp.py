@@ -495,27 +495,7 @@ with st.expander("Admin Login", expanded=True):
 if not admin_mode:
     st.stop()
 
-st.write("SHEET_KEY:", SHEET_KEY)
-st.write("STRONG_PLAYS_SHEET_NAME:", "Strong Plays")
 
-df_debug = shared_app.get_strong_plays_df()
-st.write("Rows read from Strong Plays:", len(df_debug))
-st.write("Columns returned:", list(df_debug.columns) if not df_debug.empty else "EMPTY")
-
-if not df_debug.empty:
-    st.dataframe(df_debug.head(5))
-
-ws = shared_app.get_strong_plays_sheet()
-st.write("Worksheet title:", ws.title)
-
-raw_values = ws.get_all_values()
-st.write("Raw row count from get_all_values():", len(raw_values))
-
-if raw_values:
-    st.write("First row:", raw_values[0])
-    if len(raw_values) > 1:
-        st.write("Second row:", raw_values[1])
-    
 overview_tab, operations_tab, logs_tab, usage_tab, review_tab = st.tabs([
     "Overview",
     "Operations",
