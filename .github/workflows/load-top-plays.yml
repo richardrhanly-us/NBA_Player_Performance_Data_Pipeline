@@ -22,7 +22,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pandas gspread google-auth nba_api requests joblib scipy scikit-learn==1.6.1 streamlit
+          pip install -r requirements.txt
 
       - name: Load top plays
         env:
