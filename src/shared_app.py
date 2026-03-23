@@ -328,15 +328,34 @@ def resolve_player_name(raw_name, normalized_to_actual):
 def get_player_gamelog_df(player_id, season):
     for attempt in range(2):
         try:
-            return playergamelog.PlayerGameLog(
+            print(
+                f"[GAMELOG] Requesting gamelog | player_id={player_id} | season={season} | attempt={attempt + 1}",
+                flush=True,
+            )
+
+            df = playergamelog.PlayerGameLog(
                 player_id=player_id,
                 season=season,
                 timeout=12
             ).get_data_frames()[0]
-        except Exception:
+
+            print(
+                f"[GAMELOG] Success | player_id={player_id} | rows={len(df)}",
+                flush=True,
+            )
+            return df
+
+        except Exception as e:
+            print(
+                f"[GAMELOG] ERROR | player_id={player_id} | season={season} | attempt={attempt + 1} | error={e}",
+                flush=True,
+            )
+
             if attempt == 1:
                 return pd.DataFrame()
+
             time.sleep(2)
+
     return pd.DataFrame()
 
 
@@ -815,16 +834,20 @@ def get_top_plays_today_df(api_key, debug=False):
                 unsafe_allow_html=True
             )
             progress_bar.progress(i / total_rows)
-
+        
         actual_name = resolve_player_name(raw_name, normalized_to_actual)
         if not actual_name:
             print(f"[PIPELINE] Skip: no active player match for {raw_name}", flush=True)
             continue
-
+        
+        print(f"[PIPELINE] Player mapping -> raw: {raw_name} | actual: {actual_name}", flush=True)
+        
         player_id = actual_name_to_id.get(actual_name)
         if not player_id:
             print(f"[PIPELINE] Skip: no player_id for {actual_name}", flush=True)
             continue
+        
+        print(f"[PIPELINE] Using player_id: {player_id} | season: {CURRENT_SEASON}", flush=True)
 
         if player_id in gamelog_cache:
             df = gamelog_cache[player_id]
