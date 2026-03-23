@@ -76,10 +76,13 @@ def update_top_plays_live_sheet(df):
 def main():
     start_time = time.time()
     log("[TOP PLAYS] ===== START WORKFLOW =====")
-    log("[TOP PLAYS] Building top plays from shared pipeline...")
-
+    log("[TOP PLAYS] Calling get_top_plays_today_df()...")
+    
     odds_api_key = os.environ["ODDS_API_KEY"]
-    top_df = get_top_plays_today_df(api_key=odds_api_key, debug=False)
+    
+    top_df = get_top_plays_today_df(api_key=odds_api_key, debug=True)
+    
+    log("[TOP PLAYS] Returned from get_top_plays_today_df()")
 
     if top_df is None or top_df.empty:
         log("[TOP PLAYS] No qualifying top plays returned from shared pipeline.")
