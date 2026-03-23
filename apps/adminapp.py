@@ -145,17 +145,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-@st.cache_resource
-def get_gsheet_client():
-    creds = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=SCOPES,
-    )
-    return gspread.authorize(creds)
+
 
 
 def get_or_create_worksheet(sheet_name, rows=1000, cols=20):
-    client = get_gsheet_client()
+    client = shared_app.get_gsheet_client()
     workbook = client.open_by_key(SHEET_KEY)
 
     try:
@@ -252,7 +246,7 @@ def get_admin_logs_df():
 
 
 def get_usage_log_sheet():
-    client = get_gsheet_client()
+    client = shared_app.get_gsheet_client()
     workbook = client.open_by_key(SHEET_KEY)
     return workbook.worksheet(USAGE_LOG_SHEET_NAME)
 
@@ -296,7 +290,7 @@ def normalize_name(name):
     return name.strip().lower()
 
 def get_historical_lines_sheet():
-    client = get_gsheet_client()
+    client = shared_app.get_gsheet_client()
     workbook = client.open_by_key(SHEET_KEY)
     return workbook.worksheet(HISTORICAL_LINES_SHEET_NAME)
 
@@ -384,7 +378,7 @@ def build_usage_summary(logs_df):
 
 def get_sheet1_df():
     try:
-        client = get_gsheet_client()
+        client = shared_app.get_gsheet_client()
         ws = client.open_by_key(SHEET_KEY).worksheet("Sheet1")
         values = ws.get_all_values()
 
@@ -832,11 +826,6 @@ with operations_tab:
                 )
                 st.error(f"Failed to refresh app: {e}")
                 
-    st.cache_data.clear()
-    st.cache_resource.clear()
-    shared_app.st.cache_data.clear()
-    shared_app.st.cache_resource.clear()
-    st.success("Caches cleared")
     
     st.markdown("### Operation Debug Summary")
 
