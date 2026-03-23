@@ -5,6 +5,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.shared_app import update_all_pending_sheet_results
 
+def log(msg):
+    print(msg, flush=True)
 
 if __name__ == "__main__":
     result = update_all_pending_sheet_results(debug=False)
