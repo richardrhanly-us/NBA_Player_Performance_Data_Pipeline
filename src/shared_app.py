@@ -120,6 +120,12 @@ def get_gsheet():
     client = get_gsheet_client()
     return client.open_by_key(SHEET_KEY).sheet1
 
+HISTORICAL_LINES_SHEET_NAME = "Historical Lines"
+
+@st.cache_resource
+def get_historical_lines_sheet():
+    client = get_gsheet_client()
+    return client.open_by_key(SHEET_KEY).worksheet(HISTORICAL_LINES_SHEET_NAME)
 
 @st.cache_resource
 def get_strong_plays_sheet():
@@ -281,6 +287,70 @@ def get_strong_plays_health():
         "last_update": last_update
     }
 
+def populate_closing_lines_and_clv(strong_df, historical_df):
+    if strong_df is None or strong_df.empty:
+        return strong_df
+
+    if historical_df is None or historical_df.empty:
+        return strong_df
+
+    strong_df = strong_df.copy()
+    historical_df = historical_df.copy()
+
+    for col in ["PLAYER_NAME", "GAME_DATE", "sportsbook", "sportsbook_line", "model_pick", "closing_line", "clv"]:
+        if col not in strong_df.columns:
+            strong_df[col] = ""
+
+    for col in ["PLAYER_NAME", "GAME_DATE", "sportsbook", "sportsbook_line", "captured_at"]:
+        if col not in historical_df.columns:
+            historical_df[col] = ""
+
+    strong_df["PLAYER_NAME"] = strong_df["PLAYER_NAME"].astype(str).apply(normalize_name)
+    strong_df["sportsbook"] = strong_df["sportsbook"].astype(str).str.strip().str.lower()
+    strong_df["model_pick"] = strong_df["model_pick"].astype(str).str.strip().str.upper()
+    strong_df["sportsbook_line"] = pd.to_numeric(strong_df["sportsbook_line"], errors="coerce")
+    strong_df["GAME_DATE"] = pd.to_datetime(strong_df["GAME_DATE"], errors="coerce").dt.date
+
+    historical_df["PLAYER_NAME"] = historical_df["PLAYER_NAME"].astype(str).apply(normalize_name)
+    historical_df["sportsbook"] = historical_df["sportsbook"].astype(str).str.strip().str.lower()
+    historical_df["sportsbook_line"] = pd.to_numeric(historical_df["sportsbook_line"], errors="coerce")
+    historical_df["GAME_DATE"] = pd.to_datetime(historical_df["GAME_DATE"], errors="coerce").dt.date
+    historical_df["captured_at"] = pd.to_datetime(historical_df["captured_at"], errors="coerce")
+
+    for idx, row in strong_df.iterrows():
+        player_name = row["PLAYER_NAME"]
+        game_date = row["GAME_DATE"]
+        sportsbook = row["sportsbook"]
+        bet_line = row["sportsbook_line"]
+        model_pick = row["model_pick"]
+
+        if pd.isna(game_date) or pd.isna(bet_line) or not player_name or not sportsbook:
+            continue
+
+        matches = historical_df[
+            (historical_df["PLAYER_NAME"] == player_name) &
+            (historical_df["GAME_DATE"] == game_date) &
+            (historical_df["sportsbook"] == sportsbook)
+        ].copy()
+
+        if matches.empty:
+            continue
+
+        matches = matches.dropna(subset=["captured_at", "sportsbook_line"])
+        if matches.empty:
+            continue
+
+        latest_row = matches.sort_values("captured_at").iloc[-1]
+        closing_line = latest_row["sportsbook_line"]
+
+        strong_df.at[idx, "closing_line"] = closing_line
+
+        if model_pick == "OVER":
+            strong_df.at[idx, "clv"] = round(closing_line - bet_line, 2)
+        elif model_pick == "UNDER":
+            strong_df.at[idx, "clv"] = round(bet_line - closing_line, 2)
+
+    return strong_df
 
 @st.cache_resource
 def load_model():
@@ -943,7 +1013,9 @@ def update_sheet_with_final_result(
     row_number,
     final_points,
     sportsbook_line,
-    model_pick
+    model_pick,
+    closing_line="",
+    clv=""
 ):
     line = safe_float(sportsbook_line)
     points = safe_float(final_points)
@@ -981,6 +1053,8 @@ def update_sheet_with_final_result(
         "result_logged_at": timestamp,
         "profit": profit,
         "bet_status": bet_status,
+        "closing_line": closing_line,
+        "clv": clv,
     }
 
     batch_payload = []
@@ -1046,7 +1120,19 @@ def update_all_pending_sheet_results(debug=False):
         )
 
     header_index_map = build_header_index_map(headers)
-
+    
+    historical_ws = get_historical_lines_sheet()
+    historical_values = historical_ws.get_all_values()
+    
+    if historical_values and len(historical_values) > 1:
+        historical_headers = [str(h).strip() for h in historical_values[0]]
+        historical_rows = historical_values[1:]
+        historical_df = pd.DataFrame(historical_rows, columns=historical_headers)
+    else:
+        historical_df = pd.DataFrame()
+    
+    df = populate_closing_lines_and_clv(df, historical_df)
+    
     updated_count = 0
     checked_count = 0
     rows_scanned = 0
@@ -1146,7 +1232,8 @@ def update_all_pending_sheet_results(debug=False):
                     "details": "No final points found in player gamelog",
                 })
             continue
-
+        closing_line = row.get("closing_line", "")
+        clv = row.get("clv", "")
         try:
             success = update_sheet_with_final_result(
                 worksheet=worksheet,
@@ -1154,7 +1241,9 @@ def update_all_pending_sheet_results(debug=False):
                 row_number=sheet_row_number,
                 final_points=final_points,
                 sportsbook_line=sportsbook_line,
-                model_pick=model_pick
+                model_pick=model_pick,
+                closing_line=closing_line,
+                clv=clv
             )
 
             if success:
