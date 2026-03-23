@@ -340,7 +340,7 @@ def populate_closing_lines_and_clv(strong_df, historical_df):
         if matches.empty:
             continue
 
-        latest_row = matches.sort_values("captured_at").iloc[-1]
+        latest_row = matches.sort_values("captured_at", ascending=True).iloc[-1]
         closing_line = latest_row["sportsbook_line"]
 
         strong_df.at[idx, "closing_line"] = closing_line
