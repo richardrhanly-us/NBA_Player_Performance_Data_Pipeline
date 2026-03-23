@@ -113,7 +113,10 @@ def get_gsheet_client():
     service_account_info = None
 
     try:
-        service_account_info = st.secrets["GCP_SERVICE_ACCOUNT"]
+        if "GCP_SERVICE_ACCOUNT" in st.secrets:
+            service_account_info = dict(st.secrets["GCP_SERVICE_ACCOUNT"])
+        elif "gcp_service_account" in st.secrets:
+            service_account_info = dict(st.secrets["gcp_service_account"])
     except Exception:
         pass
 
@@ -125,8 +128,8 @@ def get_gsheet_client():
     if not service_account_info:
         raise ValueError(
             "Google Sheets credentials not found. "
-            "Set GCP_SERVICE_ACCOUNT in Streamlit secrets or "
-            "GCP_SERVICE_ACCOUNT_JSON in environment variables."
+            "Set GCP_SERVICE_ACCOUNT or gcp_service_account in Streamlit secrets, "
+            "or GCP_SERVICE_ACCOUNT_JSON in environment variables."
         )
 
     creds = Credentials.from_service_account_info(
