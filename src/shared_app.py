@@ -728,6 +728,7 @@ def get_player_points_lines(player_name, bookmaker_key):
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_top_plays_today_df(api_key, debug=False):
+    print("[PIPELINE] START get_top_plays_today_df", flush=True)
     model = load_model()
     actual_name_to_id, normalized_to_actual = load_active_players()
     model_feature_names = list(getattr(model, "feature_names_in_", []))
@@ -736,6 +737,7 @@ def get_top_plays_today_df(api_key, debug=False):
     if props_df.empty:
         return pd.DataFrame()
 
+    print("[PIPELINE] Fetching odds...", flush=True)
     props_df = props_df.head(10).copy()
     props_df["normalized_name"] = props_df["player_name_raw"].apply(normalize_name)
     props_df = props_df.drop_duplicates(subset=["normalized_name"]).copy()
@@ -746,11 +748,13 @@ def get_top_plays_today_df(api_key, debug=False):
 
     status_box = None
     progress_bar = None
-
+    print(f"[PIPELINE] Built dataframe with {len(df)} rows", flush=True)
+    
     if debug:
         status_box = st.empty()
         progress_bar = st.progress(0)
 
+    print("[PIPELINE] Filtering for top plays...", flush=True)
     for i, (_, row) in enumerate(props_df.iterrows(), start=1):
         raw_name = row["player_name_raw"]
 
@@ -836,6 +840,7 @@ def get_top_plays_today_df(api_key, debug=False):
 
     top_df = pd.DataFrame(rows)
     top_df = top_df.sort_values("edge", ascending=False, key=lambda s: s.abs()).reset_index(drop=True)
+    print(f"[PIPELINE] Returning {len(top_df)} top plays", flush=True)
     return top_df
 
 
