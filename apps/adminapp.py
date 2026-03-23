@@ -495,11 +495,10 @@ with st.expander("Admin Login", expanded=True):
 if not admin_mode:
     st.stop()
 
-
 st.write("SHEET_KEY:", SHEET_KEY)
 st.write("STRONG_PLAYS_SHEET_NAME:", "Strong Plays")
 
-df_debug = get_strong_plays_df()
+df_debug = shared_app.get_strong_plays_df()
 st.write("Rows read from Strong Plays:", len(df_debug))
 st.write("Columns returned:", list(df_debug.columns) if not df_debug.empty else "EMPTY")
 
