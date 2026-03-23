@@ -497,11 +497,12 @@ if not admin_mode:
 
 
 st.write("SHEET_KEY:", SHEET_KEY)
-st.write("STRONG_PLAYS_SHEET_NAME:", STRONG_PLAYS_SHEET_NAME)
+st.write("STRONG_PLAYS_SHEET_NAME:", "Strong Plays")
 
 df_debug = get_strong_plays_df()
 st.write("Rows read from Strong Plays:", len(df_debug))
 st.write("Columns returned:", list(df_debug.columns) if not df_debug.empty else "EMPTY")
+
 if not df_debug.empty:
     st.dataframe(df_debug.head(5))
     
