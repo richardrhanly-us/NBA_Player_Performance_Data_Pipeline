@@ -300,6 +300,16 @@ def load_active_players():
     return actual_name_to_id, normalized_to_actual
 
 
+@st.cache_data(ttl=3600)
+def get_player_info_df(player_id):
+    try:
+        return commonplayerinfo.CommonPlayerInfo(
+            player_id=player_id,
+            timeout=12
+        ).get_data_frames()[0]
+    except Exception:
+        return pd.DataFrame()
+
 def resolve_player_name(raw_name, normalized_to_actual):
     normalized = normalize_name(raw_name)
 
