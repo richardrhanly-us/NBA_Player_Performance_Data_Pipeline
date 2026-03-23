@@ -13,8 +13,10 @@ from src.shared_app import (
     SHEET_KEY,
 )
 
+
 def log(msg):
     print(msg, flush=True)
+
 
 def already_logged(records_df, player_name, game_date, sportsbook, line):
     if records_df is None or records_df.empty:
@@ -55,12 +57,12 @@ def update_top_plays_live_sheet(df):
     sheet = get_top_plays_live_sheet()
 
     if df is None or df.empty:
-        print("[TOP PLAYS] No data available -> writing placeholder", flush=True)
+        log("[TOP PLAYS] No data available -> writing placeholder")
         sheet.clear()
         sheet.update(range_name="A1", values=[["No data available"]])
         return 0
 
-    print(f"[TOP PLAYS] Writing {len(df)} rows to Top Plays Live", flush=True)
+    log(f"[TOP PLAYS] Writing {len(df)} rows to Top Plays Live")
 
     sheet.clear()
     sheet.update(
@@ -72,28 +74,28 @@ def update_top_plays_live_sheet(df):
 
 
 def main():
-    print("[TOP PLAYS] ===== START WORKFLOW =====", flush=True)
-    print("[TOP PLAYS] Building top plays from shared pipeline...", flush=True)
+    start_time = time.time()
+    log("[TOP PLAYS] ===== START WORKFLOW =====")
+    log("[TOP PLAYS] Building top plays from shared pipeline...")
 
     odds_api_key = os.environ["ODDS_API_KEY"]
     top_df = get_top_plays_today_df(api_key=odds_api_key, debug=False)
 
     if top_df is None or top_df.empty:
-        print("[TOP PLAYS] No qualifying top plays returned from shared pipeline.", flush=True)
+        log("[TOP PLAYS] No qualifying top plays returned from shared pipeline.")
         rows_written = update_top_plays_live_sheet(top_df)
-        print(
-            f"[TOP PLAYS] DONE | final={rows_written} | appended=0",
-            flush=True,
-        )
+        log(f"[TOP PLAYS] DONE | final={rows_written} | appended=0")
+        log(f"[TOP PLAYS] Runtime: {round(time.time() - start_time, 2)} seconds")
         return
 
-    print(f"[TOP PLAYS] Final top plays: {len(top_df)}", flush=True)
+    log(f"[TOP PLAYS] Final top plays: {len(top_df)}")
     rows_written = update_top_plays_live_sheet(top_df)
 
     records_df = get_strong_plays_df()
     appended_count = 0
+    total_rows = len(top_df)
 
-    for _, row in top_df.iterrows():
+    for i, (_, row) in enumerate(top_df.iterrows(), start=1):
         player_name = row.get("PLAYER_NAME", "")
         sportsbook = str(row.get("sportsbook", "")).lower()
         line = row.get("sportsbook_line", "")
@@ -113,12 +115,10 @@ def main():
             except Exception:
                 game_date = ""
 
+        log(f"[TOP PLAYS] Processing {i}/{total_rows} -> {player_name} | {sportsbook} | {line}")
+
         if already_logged(records_df, player_name, game_date, sportsbook, line):
-            print(
-                f"[TOP PLAYS] Already in Strong Plays, skipping append: "
-                f"{player_name} | {sportsbook} | {line}",
-                flush=True,
-            )
+            log(f"[TOP PLAYS] SKIP (already exists) -> {player_name} | {sportsbook} | {line}")
             continue
 
         append_play_to_strong_plays(
@@ -133,17 +133,12 @@ def main():
         )
 
         appended_count += 1
-        print(
-            f"[TOP PLAYS] Appended to Strong Plays: "
-            f"{player_name} | {sportsbook} | {line}",
-            flush=True,
-        )
+        log(f"[TOP PLAYS] APPENDED -> {player_name} | {sportsbook} | {line} | edge={edge}")
         time.sleep(0.5)
 
-    print(
-        f"[TOP PLAYS] DONE | final={rows_written} | appended={appended_count}",
-        flush=True,
-    )
+    log(f"[TOP PLAYS] DONE | final={rows_written} | appended={appended_count}")
+    log(f"[TOP PLAYS] Runtime: {round(time.time() - start_time, 2)} seconds")
+    log("[TOP PLAYS] ===== END WORKFLOW =====")
 
 
 if __name__ == "__main__":
