@@ -1,5 +1,6 @@
 import sys
 import os
+import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -72,7 +73,12 @@ def main():
         model_pick = row.get("model_pick", "")
         game_date = row.get("GAME_DATE", "")
         if not game_date:
-            game_date = format_event_game_date(row.get("commence_time", ""))
+            try:
+                game_date = pd.to_datetime(row.get("commence_time", ""), utc=True)\
+                    .tz_convert("US/Central")\
+                    .strftime("%B %d, %Y")
+            except Exception:
+                game_date = ""
 
         if already_logged(records_df, player_name, game_date, sportsbook, line):
             print(
