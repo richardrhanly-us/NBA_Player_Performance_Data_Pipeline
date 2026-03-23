@@ -965,52 +965,48 @@ with operations_tab:
 
                     # Save today's lines to Historical Lines sheet
                     historical_ws = get_historical_lines_sheet()
-
+                    
                     existing_values = historical_ws.get_all_values()
-
+                    
                     existing_keys = set()
                     if len(existing_values) > 1:
                         for row in existing_values[1:]:
-                            if len(row) >= 5:
+                            if len(row) >= 4:
                                 existing_player = str(row[0]).strip()
                                 existing_date = str(row[1]).strip()
                                 existing_line = str(row[2]).strip()
                                 existing_book = str(row[3]).strip().lower()
-                                existing_captured_at = str(row[4]).strip()
-
+                    
                                 if (
                                     existing_player
                                     and existing_date
                                     and existing_line
                                     and existing_book
-                                    and existing_captured_at
                                 ):
                                     existing_keys.add((
                                         existing_player,
                                         existing_date,
                                         existing_line,
-                                        existing_book,
-                                        existing_captured_at
+                                        existing_book
                                     ))
-
+                    
                     today_date = datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d")
                     captured_at = pd.Timestamp.now(tz="America/Chicago").strftime("%Y-%m-%d %H:%M:%S")
-
+                    
                     rows_to_append = []
-
+                    
                     for _, row in scan_df.iterrows():
-                        player_name = str(row["player_name_raw"]).strip()
+                        player_name = normalize_name(str(row["player_name_raw"]).strip())
                         sportsbook_line = str(row["line"]).strip()
                         sportsbook_name = str(queue_sportsbook).strip().lower()
-
+                    
                         history_key = (
                             player_name,
                             today_date,
                             sportsbook_line,
-                            sportsbook_name,
-                            captured_at
+                            sportsbook_name
                         )
-
+                    
                         if history_key not in existing_keys:
                             rows_to_append.append([
                                 player_name,
@@ -1020,7 +1016,7 @@ with operations_tab:
                                 captured_at
                             ])
                             existing_keys.add(history_key)
-
+                    
                     if rows_to_append:
                         historical_ws.append_rows(
                             rows_to_append,
