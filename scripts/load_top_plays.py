@@ -10,7 +10,8 @@ from src.shared_app import (
     append_manual_play_to_sheet1,
     get_strong_plays_df,
     get_top_plays_today_df,
-    update_top_plays_live_sheet,
+    get_gsheet_client,
+    SHEET_KEY,
 )
 
 
@@ -43,6 +44,29 @@ def already_logged(records_df, player_name, game_date, sportsbook, line):
 
     return False
 
+def get_top_plays_live_sheet():
+    client = get_gsheet_client()
+    return client.open_by_key(SHEET_KEY).worksheet("Top Plays Live")
+
+
+def update_top_plays_live_sheet(df):
+    sheet = get_top_plays_live_sheet()
+
+    if df is None or df.empty:
+        print("[TOP PLAYS] No data available -> writing placeholder", flush=True)
+        sheet.clear()
+        sheet.update(range_name="A1", values=[["No data available"]])
+        return 0
+
+    print(f"[TOP PLAYS] Writing {len(df)} rows to Top Plays Live", flush=True)
+
+    sheet.clear()
+    sheet.update(
+        range_name="A1",
+        values=[df.columns.values.tolist()] + df.values.tolist()
+    )
+
+    return len(df)
 
 def main():
     print("[TOP PLAYS] ===== START WORKFLOW =====", flush=True)
