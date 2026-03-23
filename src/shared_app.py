@@ -328,34 +328,15 @@ def resolve_player_name(raw_name, normalized_to_actual):
 def get_player_gamelog_df(player_id, season):
     for attempt in range(2):
         try:
-            print(
-                f"[GAMELOG] Requesting gamelog | player_id={player_id} | season={season} | attempt={attempt + 1}",
-                flush=True,
-            )
-
-            df = playergamelog.PlayerGameLog(
+            return playergamelog.PlayerGameLog(
                 player_id=player_id,
                 season=season,
                 timeout=12
             ).get_data_frames()[0]
-
-            print(
-                f"[GAMELOG] Success | player_id={player_id} | rows={len(df)}",
-                flush=True,
-            )
-            return df
-
-        except Exception as e:
-            print(
-                f"[GAMELOG] ERROR | player_id={player_id} | season={season} | attempt={attempt + 1} | error={e}",
-                flush=True,
-            )
-
+        except Exception:
             if attempt == 1:
                 return pd.DataFrame()
-
             time.sleep(2)
-
     return pd.DataFrame()
 
 
@@ -820,7 +801,6 @@ def get_top_plays_today_df(api_key, debug=False):
 
     for i, (_, row) in enumerate(props_df.iterrows(), start=1):
         raw_name = row["player_name_raw"]
-        print(f"[PIPELINE] Scoring player {i}/{total_rows}: {raw_name}", flush=True)
 
         if debug:
             status_box.markdown(
@@ -837,17 +817,14 @@ def get_top_plays_today_df(api_key, debug=False):
         
         actual_name = resolve_player_name(raw_name, normalized_to_actual)
         if not actual_name:
-            print(f"[PIPELINE] Skip: no active player match for {raw_name}", flush=True)
             continue
         
-        print(f"[PIPELINE] Player mapping -> raw: {raw_name} | actual: {actual_name}", flush=True)
         
         player_id = actual_name_to_id.get(actual_name)
         if not player_id:
-            print(f"[PIPELINE] Skip: no player_id for {actual_name}", flush=True)
             continue
         
-        print(f"[PIPELINE] Using player_id: {player_id} | season: {CURRENT_SEASON}", flush=True)
+        
 
         if player_id in gamelog_cache:
             df = gamelog_cache[player_id]
@@ -857,12 +834,10 @@ def get_top_plays_today_df(api_key, debug=False):
                 gamelog_cache[player_id] = df
 
         if df.empty:
-            print(f"[PIPELINE] Skip: empty gamelog for {actual_name}", flush=True)
             continue
 
         X = build_player_feature_row(df, actual_name)
         if X is None or X.empty:
-            print(f"[PIPELINE] Skip: no feature row for {actual_name}", flush=True)
             continue
 
         if model_feature_names:
@@ -871,7 +846,6 @@ def get_top_plays_today_df(api_key, debug=False):
         predicted_points = float(model.predict(X)[0])
         line = safe_float(row["line"])
         if line is None:
-            print(f"[PIPELINE] Skip: invalid line for {actual_name}", flush=True)
             continue
 
         edge = predicted_points - line
@@ -915,7 +889,6 @@ def get_top_plays_today_df(api_key, debug=False):
     print(f"[PIPELINE] Rows that passed edge threshold: {len(rows)}", flush=True)
 
     if not rows:
-        print("[PIPELINE] No rows passed edge threshold", flush=True)
         return pd.DataFrame()
 
     top_df = pd.DataFrame(rows)
