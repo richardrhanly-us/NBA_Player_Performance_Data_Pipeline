@@ -7,6 +7,7 @@ import pandas as pd
 import unicodedata
 import gspread
 import streamlit as st
+st.title("Bare app works")
 
 from datetime import datetime
 from google.oauth2.service_account import Credentials
