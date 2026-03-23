@@ -3,14 +3,13 @@ import pandas as pd
 import streamlit as st
 
 from src.sheets_utils import (
-    STRONG_PLAYS_SHEET_NAME,
+    RESULTS_SHEET_NAME,
     clear_app_caches,
     get_historical_lines_sheet,
     get_worksheet_with_df,
     column_letter_from_index,
     build_header_index_map,
 )
-
 
 def normalize_sheet_date(value):
     if value is None:
@@ -205,7 +204,7 @@ def update_all_pending_sheet_results(
     safe_float,
     debug=False
 ):
-    source_sheet_name = STRONG_PLAYS_SHEET_NAME
+    source_sheet_name = RESULTS_SHEET_NAME
     worksheet, df, headers = get_worksheet_with_df(source_sheet_name)
 
     status_box = None
