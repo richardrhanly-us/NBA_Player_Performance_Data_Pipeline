@@ -36,8 +36,8 @@ def is_running_in_streamlit():
 def clear_streamlit_cache_safely():
     try:
         if is_running_in_streamlit():
-            clear_streamlit_cache_safely()
-            clear_streamlit_cache_safely()
+            st.cache_data.clear()
+            st.cache_resource.clear()
     except Exception:
         pass
 
@@ -233,7 +233,7 @@ def append_manual_play_to_sheet1(player_name, sportsbook_key, sportsbook_line=No
     ]]
 
     sheet.update(range_name=f"A{next_row}:K{next_row}", values=row_values)
-    clear_streamlit_cache_safely()
+    st.cache_data.clear()
 
     return {
         "player_name": actual_name,
@@ -1106,7 +1106,7 @@ def update_sheet_with_final_result(
         return False
 
     worksheet.batch_update(batch_payload)
-    clear_streamlit_cache_safely()
+    st.cache_data.clear()
     return True
 
 
@@ -1314,7 +1314,7 @@ def update_all_pending_sheet_results(debug=False):
                     "details": str(e),
                 })
 
-    clear_streamlit_cache_safely()
+    st.cache_data.clear()
 
     result = {
         "source_sheet": source_sheet_name,
