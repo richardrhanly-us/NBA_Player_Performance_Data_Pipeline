@@ -667,6 +667,7 @@ with operations_tab:
             try:
                 debug_result = update_all_pending_sheet_results(debug=True)
                 st.session_state.last_operations_debug = debug_result
+                st.json(debug_result)
 
                 write_admin_log(
                     action="update_final_results",
