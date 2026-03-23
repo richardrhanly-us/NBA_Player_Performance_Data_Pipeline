@@ -1,3 +1,4 @@
+import os
 import json
 import time
 import requests
@@ -105,11 +106,29 @@ def compute_game_minutes_remaining(period, game_clock_minutes):
     return (5.0 * overtime_periods_left) + game_clock_minutes
 
 
-
 @st.cache_resource
 def get_gsheet_client():
+    service_account_info = None
+
+    try:
+        service_account_info = st.secrets["GCP_SERVICE_ACCOUNT"]
+    except Exception:
+        pass
+
+    if not service_account_info:
+        env_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
+        if env_json:
+            service_account_info = json.loads(env_json)
+
+    if not service_account_info:
+        raise ValueError(
+            "Google Sheets credentials not found. "
+            "Set GCP_SERVICE_ACCOUNT in Streamlit secrets or "
+            "GCP_SERVICE_ACCOUNT_JSON in environment variables."
+        )
+
     creds = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
+        service_account_info,
         scopes=SCOPES
     )
     return gspread.authorize(creds)
