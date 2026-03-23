@@ -271,6 +271,7 @@ def update_all_pending_sheet_results(
     rows_skipped_missing_player_date = 0
     rows_skipped_other = 0
     row_debug = []
+    gamelog_cache = {}
 
     today = pd.Timestamp.now(tz="America/Chicago").date()
     total_rows = len(df)
@@ -279,7 +280,7 @@ def update_all_pending_sheet_results(
         rows_scanned += 1
         sheet_row_number = idx + 2
 
-        if not debug and (rows_scanned % 10 == 0 or rows_scanned == total_rows):
+        if not debug and (rows_scanned % 25 == 0 or rows_scanned == total_rows):
             print(
                 f"[UPDATE RESULTS] Scanned {rows_scanned}/{total_rows} rows | "
                 f"pending found={pending_rows_found} | updated={updated_count}",
@@ -357,15 +358,30 @@ def update_all_pending_sheet_results(
                 })
             continue
 
-        final_points = get_final_points_from_gamelog(
-            player_name=player_name,
-            game_date=game_date,
-            load_active_players=load_active_players,
-            normalize_name=normalize_name,
-            get_player_gamelog_df=get_player_gamelog_df,
-            CURRENT_SEASON=CURRENT_SEASON,
-            safe_float=safe_float,
-        )
+        actual_name_to_id, normalized_to_actual = load_active_players()
+        actual_name = normalized_to_actual.get(normalize_name(player_name), player_name)
+        player_id = actual_name_to_id.get(actual_name)
+
+        final_points = None
+
+        if player_id:
+            if player_id in gamelog_cache:
+                gamelog_df = gamelog_cache[player_id]
+            else:
+                gamelog_df = get_player_gamelog_df(player_id, CURRENT_SEASON)
+                gamelog_cache[player_id] = gamelog_df
+
+            if not gamelog_df.empty and "GAME_DATE" in gamelog_df.columns:
+                gamelog_df = gamelog_df.copy()
+                gamelog_df["GAME_DATE_NORM"] = pd.to_datetime(
+                    gamelog_df["GAME_DATE"], errors="coerce"
+                ).dt.strftime("%B %d, %Y")
+
+                target_date = normalize_sheet_date(game_date)
+                match_df = gamelog_df[gamelog_df["GAME_DATE_NORM"] == target_date]
+
+                if not match_df.empty:
+                    final_points = safe_float(match_df.iloc[0].get("PTS"))
 
         if final_points is None:
             rows_skipped_not_final += 1
@@ -405,7 +421,7 @@ def update_all_pending_sheet_results(
                         "status": "updated",
                         "details": f"Updated in {source_sheet_name} with final_points={final_points}",
                     })
-                time.sleep(0.15)
+                
             else:
                 rows_skipped_other += 1
                 if debug:
