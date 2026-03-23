@@ -994,7 +994,7 @@ with operations_tab:
                                     ))
 
                     today_date = datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d")
-                    captured_at = datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d %H:%M:%S")
+                    captured_at = pd.Timestamp.now(tz="America/Chicago").strftime("%Y-%m-%d %H:%M:%S")
 
                     rows_to_append = []
 
