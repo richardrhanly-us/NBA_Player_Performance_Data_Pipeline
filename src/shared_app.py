@@ -67,19 +67,30 @@ def update_all_pending_sheet_results(debug=False):
 def normalize_name(name: str) -> str:
     if not name:
         return ""
-    name = unicodedata.normalize("NFKD", str(name))
+
+    name = str(name)
+    name = unicodedata.normalize("NFKD", name)
     name = "".join(ch for ch in name if not unicodedata.combining(ch))
-    return (
-        name.lower()
-        .replace(".", "")
-        .replace("’", "'")
-        .replace("-", " ")
-        .replace(" jr", "")
-        .replace(" sr", "")
-        .replace(" iii", "")
-        .replace(" ii", "")
-        .strip()
-    )
+    name = name.lower()
+
+    replacements = {
+        ".": "",
+        ",": "",
+        "’": "'",
+        "'": "",
+        "-": " ",
+    }
+
+    for old, new in replacements.items():
+        name = name.replace(old, new)
+
+    parts = name.split()
+    suffixes = {"jr", "sr", "ii", "iii", "iv", "v"}
+
+    parts = [p for p in parts if p not in suffixes]
+    name = " ".join(parts)
+
+    return " ".join(name.split()).strip()
 
 
 def safe_float(value):
@@ -264,27 +275,54 @@ def load_model_stats():
     with open("models/points_model_stats.json", "r") as f:
         return json.load(f)
 
-
 @st.cache_data(ttl=3600)
 def load_active_players():
     active_players = players.get_active_players()
-    actual_name_to_id = {p["full_name"]: p["id"] for p in active_players}
+
+    actual_name_to_id = {}
     normalized_to_actual = {}
-    for actual_name in actual_name_to_id.keys():
-        normalized_to_actual[normalize_name(actual_name)] = actual_name
+
+    for p in active_players:
+        actual_name = str(p["full_name"]).strip()
+        player_id = p["id"]
+
+        actual_name_to_id[actual_name] = player_id
+
+        normalized = normalize_name(actual_name)
+        normalized_to_actual[normalized] = actual_name
+
+        parts = normalized.split()
+        if len(parts) >= 2:
+            first = parts[0]
+            last = parts[-1]
+            normalized_to_actual[f"{first} {last}"] = actual_name
+
     return actual_name_to_id, normalized_to_actual
 
 
-@st.cache_data(ttl=3600)
-def get_player_info_df(player_id):
-    try:
-        return commonplayerinfo.CommonPlayerInfo(
-            player_id=player_id,
-            timeout=12
-        ).get_data_frames()[0]
-    except Exception:
-        return pd.DataFrame()
+def resolve_player_name(raw_name, normalized_to_actual):
+    normalized = normalize_name(raw_name)
 
+    exact = normalized_to_actual.get(normalized)
+    if exact:
+        return exact
+
+    raw_parts = normalized.split()
+    if len(raw_parts) >= 2:
+        first = raw_parts[0]
+        last = raw_parts[-1]
+
+        for norm_name, actual_name in normalized_to_actual.items():
+            norm_parts = norm_name.split()
+            if len(norm_parts) >= 2:
+                if norm_parts[0] == first and norm_parts[-1] == last:
+                    return actual_name
+
+    for norm_name, actual_name in normalized_to_actual.items():
+        if normalized == norm_name:
+            return actual_name
+
+    return None
 
 @st.cache_data(ttl=900)
 def get_player_gamelog_df(player_id, season):
@@ -778,8 +816,7 @@ def get_top_plays_today_df(api_key, debug=False):
             )
             progress_bar.progress(i / total_rows)
 
-        normalized = normalize_name(raw_name)
-        actual_name = normalized_to_actual.get(normalized)
+        actual_name = resolve_player_name(raw_name, normalized_to_actual)
         if not actual_name:
             print(f"[PIPELINE] Skip: no active player match for {raw_name}", flush=True)
             continue
