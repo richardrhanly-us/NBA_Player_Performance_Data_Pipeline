@@ -270,38 +270,25 @@ def append_manual_play_to_sheet1(
     edge = round(predicted_points - sportsbook_line, 2)
     captured_at = pd.Timestamp.now(tz="America/Chicago").strftime("%Y-%m-%d %H:%M:%S")
 
-    sheet = get_strong_plays_sheet()
+    sheet = get_results_sheet()
     values = sheet.get_all_values()
     next_row = len(values) + 1 if values else 2
 
     row_values = [[
-        actual_name,                 # A PLAYER_NAME
-        str(game_date),              # B GAME_DATE
-        sportsbook_line,             # C sportsbook_line
-        sportsbook,                  # D sportsbook
-        last_update,                 # E last_update
-        round(predicted_points, 2),  # F predicted_points
-        "",                          # G final_points
-        "",                          # H line_result
-        model_pick,                  # I model_pick
-        "",                          # J model_result
-        "",                          # K result_logged_at
-        "",                          # L profit
-        edge,                        # M edge
-        "PENDING",                   # N bet_status
-        "",                          # O strong_cumulative_profit
-        "",                          # P total_bets
-        "",                          # Q wins
-        "",                          # R losses
-        "",                          # S win_rate
-        "",                          # T total_units
-        "",                          # U ROI
-        "",                          # V closing_line
-        "",                          # W clv
-        captured_at,                 # X captured_at
+        actual_name,
+        str(game_date),
+        sportsbook_line,
+        sportsbook,
+        last_update,
+        round(predicted_points, 2),
+        "",
+        "",
+        model_pick,
+        "",
+        "",
     ]]
 
-    sheet.update(range_name=f"A{next_row}:X{next_row}", values=row_values)
+    sheet.update(range_name=f"A{next_row}:K{next_row}", values=row_values)
     clear_app_caches()
 
     return {
