@@ -1,13 +1,12 @@
 import sys
 import os
+import time
 import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import time
-
 from src.shared_app import (
-    append_manual_play_to_sheet1,
+    append_play_to_strong_plays,
     get_strong_plays_df,
     get_top_plays_today_df,
     get_gsheet_client,
@@ -44,6 +43,7 @@ def already_logged(records_df, player_name, game_date, sportsbook, line):
 
     return False
 
+
 def get_top_plays_live_sheet():
     client = get_gsheet_client()
     return client.open_by_key(SHEET_KEY).worksheet("Top Plays Live")
@@ -67,6 +67,7 @@ def update_top_plays_live_sheet(df):
     )
 
     return len(df)
+
 
 def main():
     print("[TOP PLAYS] ===== START WORKFLOW =====", flush=True)
@@ -96,12 +97,17 @@ def main():
         line = row.get("sportsbook_line", "")
         predicted_points = row.get("predicted_points", "")
         model_pick = row.get("model_pick", "")
+        last_update = row.get("last_update", "")
+        edge = row.get("edge", 0)
+
         game_date = row.get("GAME_DATE", "")
         if not game_date:
             try:
-                game_date = pd.to_datetime(row.get("commence_time", ""), utc=True)\
-                    .tz_convert("US/Central")\
+                game_date = (
+                    pd.to_datetime(row.get("commence_time", ""), utc=True)
+                    .tz_convert("US/Central")
                     .strftime("%B %d, %Y")
+                )
             except Exception:
                 game_date = ""
 
@@ -113,13 +119,15 @@ def main():
             )
             continue
 
-        append_manual_play_to_sheet1(
+        append_play_to_strong_plays(
             player_name=player_name,
             game_date=game_date,
             sportsbook_line=line,
             sportsbook=sportsbook,
             predicted_points=predicted_points,
             model_pick=model_pick,
+            last_update=last_update,
+            edge=edge,
         )
 
         appended_count += 1
