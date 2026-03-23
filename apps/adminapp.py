@@ -26,6 +26,7 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 SHEET_KEY = "1uhjV_Si-qcILfNJbKZrD52y4JnT_GvqQ0hzN7POekQM"
 ADMIN_LOG_SHEET_NAME = "Admin Logs"
 USAGE_LOG_SHEET_NAME = "Usage Log"
+HISTORICAL_LINES_SHEET_NAME = "Historical Lines"
 
 
 st.set_page_config(
@@ -286,6 +287,11 @@ def get_usage_logs_df():
         print(f"[ERROR] get_usage_logs_df failed: {e}")
         return pd.DataFrame(columns=expected_cols)
 
+
+def get_historical_lines_sheet():
+    client = get_gsheet_client()
+    workbook = client.open_by_key(SHEET_KEY)
+    return workbook.worksheet(HISTORICAL_LINES_SHEET_NAME)
 
 def build_usage_summary(logs_df):
     expected_cols = [
@@ -958,75 +964,63 @@ with operations_tab:
                     scan_df["player_name_raw"] = scan_df["player_name_raw"].astype(str).str.strip()
 
 
-                    # =========================
-                    # SAVE TO HISTORICAL LINES
-                    # =========================
-                    HISTORICAL_FILE = os.path.abspath(
-                        os.path.join(os.path.dirname(__file__), "..", "historical_lines.csv")
-                    )
-    
-                    today_lines = scan_df.copy()
-    
-                    today_lines = today_lines.rename(columns={
-                        "player_name_raw": "PLAYER_NAME",
-                        "line": "sportsbook_line"
-                    })
-    
-                    today_lines["PLAYER_NAME"] = today_lines["PLAYER_NAME"].astype(str).str.strip()
-                    today_lines["GAME_DATE"] = datetime.now(ZoneInfo("America/Chicago")).date()
-    
-                    today_lines = today_lines[["PLAYER_NAME", "GAME_DATE", "sportsbook_line"]]
-    
-                    if not os.path.exists(HISTORICAL_FILE) or os.path.getsize(HISTORICAL_FILE) == 0:
-                        today_lines.to_csv(HISTORICAL_FILE, index=False)
-                        print("Created historical_lines.csv")
-                    else:
-                        historical = pd.read_csv(HISTORICAL_FILE)
-    
-                        historical["PLAYER_NAME"] = historical["PLAYER_NAME"].astype(str).str.strip()
-                        historical["GAME_DATE"] = pd.to_datetime(historical["GAME_DATE"]).dt.date
-    
-                        combined = pd.concat([historical, today_lines], ignore_index=True)
-    
-                        combined = combined.drop_duplicates(
-                            subset=["PLAYER_NAME", "GAME_DATE", "sportsbook_line"]
+                    # Save today's lines to Historical Lines sheet
+                    historical_ws = get_historical_lines_sheet()
+
+                    existing_values = historical_ws.get_all_values()
+
+                    existing_keys = set()
+                    if len(existing_values) > 1:
+                        for row in existing_values[1:]:
+                            if len(row) >= 4:
+                                existing_player = str(row[0]).strip()
+                                existing_date = str(row[1]).strip()
+                                existing_line = str(row[2]).strip()
+                                existing_book = str(row[3]).strip().lower()
+
+                                if existing_player and existing_date and existing_line and existing_book:
+                                    existing_keys.add((
+                                        existing_player,
+                                        existing_date,
+                                        existing_line,
+                                        existing_book
+                                    ))
+
+                    today_date = datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d")
+
+                    rows_to_append = []
+
+                    for _, row in scan_df.iterrows():
+                        player_name = str(row["player_name_raw"]).strip()
+                        sportsbook_line = str(row["line"]).strip()
+                        sportsbook_name = str(queue_sportsbook).strip().lower()
+
+                        history_key = (
+                            player_name,
+                            today_date,
+                            sportsbook_line,
+                            sportsbook_name
                         )
-    
-                        combined.to_csv(HISTORICAL_FILE, index=False)
-    
-                        print("Updated historical_lines.csv:", combined.shape)
 
-                    # Save today's lines to historical_lines.csv
-                    HISTORICAL_FILE = os.path.abspath(
-                        os.path.join(os.path.dirname(__file__), "..", "historical_lines.csv")
-                    )
+                        if history_key not in existing_keys:
+                            rows_to_append.append([
+                                player_name,
+                                today_date,
+                                sportsbook_line,
+                                sportsbook_name
+                            ])
+                            existing_keys.add(history_key)
 
-                    today_lines = scan_df.copy()
-                    today_lines = today_lines.rename(columns={
-                        "player_name_raw": "PLAYER_NAME",
-                        "line": "sportsbook_line",
-                    })
-
-                    today_lines["PLAYER_NAME"] = today_lines["PLAYER_NAME"].astype(str).str.strip()
-                    today_lines["GAME_DATE"] = datetime.now(ZoneInfo("America/Chicago")).date()
-
-                    today_lines = today_lines[["PLAYER_NAME", "GAME_DATE", "sportsbook_line"]].copy()
-
-                    if os.path.exists(HISTORICAL_FILE):
-                        historical = pd.read_csv(HISTORICAL_FILE)
-                        if not historical.empty:
-                            historical["PLAYER_NAME"] = historical["PLAYER_NAME"].astype(str).str.strip()
-                            historical["GAME_DATE"] = pd.to_datetime(historical["GAME_DATE"], errors="coerce").dt.date
-                        combined = pd.concat([historical, today_lines], ignore_index=True)
+                    if rows_to_append:
+                        historical_ws.append_rows(
+                            rows_to_append,
+                            value_input_option="USER_ENTERED"
+                        )
+                        print(f"Historical Lines updated: {len(rows_to_append)} new rows")
                     else:
-                        combined = today_lines.copy()
-
-                    combined = combined.dropna(subset=["PLAYER_NAME", "GAME_DATE", "sportsbook_line"]).copy()
-                    combined = combined.drop_duplicates(
-                        subset=["PLAYER_NAME", "GAME_DATE", "sportsbook_line"]
-                    ).reset_index(drop=True)
-
-                    combined.to_csv(HISTORICAL_FILE, index=False)
+                        print("Historical Lines already up to date")
+                    
+                    
                     scan_df = scan_df.sort_values(
                         by=["player_name_raw", "last_update"],
                         ascending=[True, False]
