@@ -860,10 +860,19 @@ def build_prediction(player_name, sportsbook_line):
     X = build_player_feature_row(gamelog_df, actual_name, sportsbook_line)
     if X is None or X.empty:
         return {"error": "Not enough games to build features."}
-
+    
     model_feature_names = list(getattr(model, "feature_names_in_", []))
+    
     if model_feature_names:
-        X = X.reindex(columns=model_feature_names, fill_value=0)
+        missing_features = [col for col in model_feature_names if col not in X.columns]
+        extra_features = [col for col in X.columns if col not in model_feature_names]
+    
+        if missing_features:
+            return {"error": f"Model feature mismatch. Missing: {', '.join(missing_features)}"}
+    
+        X = X.reindex(columns=model_feature_names)
+
+        
 
     predicted_points = float(model.predict(X)[0])
     base_predicted_points = predicted_points
