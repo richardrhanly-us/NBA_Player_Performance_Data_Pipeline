@@ -47,7 +47,7 @@ def append_manual_play_to_sheet1(
         if df is None or df.empty:
             raise ValueError(f"Could not load gamelog for {actual_name}")
 
-        X = build_player_feature_row(df, actual_name)
+        X = build_player_feature_row(df, actual_name, sportsbook_line)
         if X is None or X.empty:
             raise ValueError(f"Not enough data to build features for {actual_name}")
 
