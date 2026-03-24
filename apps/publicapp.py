@@ -857,7 +857,7 @@ def build_prediction(player_name, sportsbook_line):
     if gamelog_df is None or gamelog_df.empty:
         return {"error": "Player gamelog unavailable."}
 
-    X = build_player_feature_row(gamelog_df, actual_name)
+    X = build_player_feature_row(gamelog_df, actual_name, sportsbook_line)
     if X is None or X.empty:
         return {"error": "Not enough games to build features."}
 
