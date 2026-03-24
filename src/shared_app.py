@@ -363,7 +363,7 @@ def get_player_gamelog_df(player_id, season):
     return pd.DataFrame()
 
 
-ddef build_player_feature_row(df, player_name, sportsbook_line=None):
+def build_player_feature_row(df, player_name, sportsbook_line=None):
     df = df.copy()
     df["PLAYER_NAME"] = player_name
     df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"])
@@ -416,16 +416,18 @@ ddef build_player_feature_row(df, player_name, sportsbook_line=None):
     df["opp_pts_allowed"] = df.groupby("opponent")["PTS"].transform(
         lambda x: x.shift(1).rolling(10).mean()
     )
-    
+
     df["opp_pts_allowed_last5"] = df.groupby("opponent")["PTS"].transform(
         lambda x: x.shift(1).rolling(5).mean()
     )
-    
+
     df["is_star"] = (df["player_avg_pts"] >= 20).astype(int)
-    
     df["closing_line"] = sportsbook_line
-        if "FG3A" in df.columns:
-            df["last5_3pa"] = df.groupby("PLAYER_NAME")["FG3A"].transform(lambda x: x.shift(1).rolling(5).mean())
+
+    if "FG3A" in df.columns:
+        df["last5_3pa"] = df.groupby("PLAYER_NAME")["FG3A"].transform(
+            lambda x: x.shift(1).rolling(5).mean()
+        )
 
     required_features = [
         "player_avg_pts",
