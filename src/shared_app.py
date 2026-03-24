@@ -422,7 +422,7 @@ def build_player_feature_row(df, player_name, sportsbook_line=None):
     )
 
     df["is_star"] = (df["player_avg_pts"] >= 20).astype(int)
-    df["closing_line"] = sportsbook_line
+    df["closing_line"] = float(sportsbook_line) if sportsbook_line is not None else df["player_avg_pts"]
 
     if "FG3A" in df.columns:
         df["last5_3pa"] = df.groupby("PLAYER_NAME")["FG3A"].transform(
