@@ -42,70 +42,34 @@ def append_manual_play_to_sheet1(
     sportsbook_lookup = sportsbook_key or sportsbook or BOOKMAKER_KEY
     line_data = None
 
-    if predicted_points is None or model_pick is None or sportsbook_line is None:
+    if sportsbook_line is None:
+        line_data = get_player_points_lines(actual_name, sportsbook_lookup)
+        if not line_data or line_data.get("points_line") is None:
+            raise ValueError(f"No live {sportsbook_lookup} line found for {actual_name}")
+        sportsbook_line = float(line_data["points_line"])
+    else:
+        sportsbook_line = float(sportsbook_line)
+
+    if predicted_points is None or model_pick is None:
         df = get_player_gamelog_df(player_id, CURRENT_SEASON)
         if df is None or df.empty:
-            raise ValueError(f"Could not load gamelog for {actual_name}")
-
-        X = build_player_feature_row(df, actual_name, sportsbook_line)
-        if X is None or X.empty:
-            if sportsbook_line is None:
-                line_data = get_player_points_lines(actual_name, sportsbook_lookup)
-                if not line_data or line_data.get("points_line") is None:
-                    raise ValueError(f"No live {sportsbook_lookup} line found for {actual_name}")
-                sportsbook_line = float(line_data["points_line"])
-            else:
-                sportsbook_line = float(sportsbook_line)
-        
             predicted_points = sportsbook_line
             model_pick = "OVER"
         else:
-            model = load_model()
-            model_feature_names = list(getattr(model, "feature_names_in_", []))
-            if model_feature_names:
-                X = X.reindex(columns=model_feature_names, fill_value=0)
-        
-            predicted_points = float(model.predict(X)[0])
-        
-            line_data = get_player_points_lines(actual_name, sportsbook_lookup)
-        
-            if sportsbook_line is None:
-                if not line_data or line_data.get("points_line") is None:
-                    raise ValueError(f"No live {sportsbook_lookup} line found for {actual_name}")
-                sportsbook_line = float(line_data["points_line"])
+            X = build_player_feature_row(df, actual_name, sportsbook_line)
+
+            if X is None or X.empty:
+                predicted_points = sportsbook_line
+                model_pick = "OVER"
             else:
-                sportsbook_line = float(sportsbook_line)
-        
-            if predicted_points is None or sportsbook_line is None:
-                model_pick = None
-            else:
+                model = load_model()
+                model_feature_names = list(getattr(model, "feature_names_in_", []))
+                if model_feature_names:
+                    X = X.reindex(columns=model_feature_names, fill_value=0)
+
+                predicted_points = float(model.predict(X)[0])
                 model_pick = "OVER" if predicted_points > sportsbook_line else "UNDER"
-            
-        if X is not None and not X.empty:
-            model = load_model()
-        
-            model_feature_names = list(getattr(model, "feature_names_in_", []))
-            if model_feature_names:
-                X = X.reindex(columns=model_feature_names, fill_value=0)
-        
-            predicted_points = float(model.predict(X)[0])
-        else:
-            predicted_points = float(sportsbook_line)
 
-        predicted_points = float(model.predict(X)[0])
-
-        line_data = get_player_points_lines(actual_name, sportsbook_lookup)
-
-        if sportsbook_line is None:
-            if not line_data or line_data.get("points_line") is None:
-                raise ValueError(f"No live {sportsbook_lookup} line found for {actual_name}")
-            sportsbook_line = float(line_data["points_line"])
-        else:
-            sportsbook_line = float(sportsbook_line)
-
-        model_pick = "OVER" if predicted_points > sportsbook_line else "UNDER"
-
-    sportsbook_line = float(sportsbook_line)
     predicted_points = float(predicted_points)
     model_pick = str(model_pick).strip().upper()
 
