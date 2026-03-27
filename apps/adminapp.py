@@ -8,10 +8,11 @@ from zoneinfo import ZoneInfo
 from google.oauth2.service_account import Credentials
 import gspread
 import unicodedata
-import src.shared_app as shared_app
-from src.write_ops import append_manual_play_to_sheet1
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+import src.shared_app as shared_app
+from src.write_ops import append_manual_play_to_sheet1
 
 
 from src.shared_app import (
