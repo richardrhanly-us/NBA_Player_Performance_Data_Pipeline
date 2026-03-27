@@ -76,7 +76,10 @@ def append_manual_play_to_sheet1(
             else:
                 sportsbook_line = float(sportsbook_line)
         
-            model_pick = "OVER" if predicted_points > sportsbook_line else "UNDER"
+            if predicted_points is None or sportsbook_line is None:
+                model_pick = None
+            else:
+                model_pick = "OVER" if predicted_points > sportsbook_line else "UNDER"
             
         if X is not None and not X.empty:
             model = load_model()
