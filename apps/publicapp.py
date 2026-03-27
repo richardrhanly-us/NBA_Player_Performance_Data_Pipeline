@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import gspread
 import pandas as pd
 import streamlit as st
@@ -13,7 +13,7 @@ from google.oauth2.service_account import Credentials
 from scipy.stats import norm
 from streamlit_autorefresh import st_autorefresh
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 
 from src.shared_app import (
     APP_VERSION,
