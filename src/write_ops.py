@@ -49,7 +49,34 @@ def append_manual_play_to_sheet1(
 
         X = build_player_feature_row(df, actual_name, sportsbook_line)
         if X is None or X.empty:
-            raise ValueError(f"Not enough data to build features for {actual_name}")
+            if sportsbook_line is None:
+                line_data = get_player_points_lines(actual_name, sportsbook_lookup)
+                if not line_data or line_data.get("points_line") is None:
+                    raise ValueError(f"No live {sportsbook_lookup} line found for {actual_name}")
+                sportsbook_line = float(line_data["points_line"])
+            else:
+                sportsbook_line = float(sportsbook_line)
+        
+            predicted_points = sportsbook_line
+            model_pick = "OVER"
+        else:
+            model = load_model()
+            model_feature_names = list(getattr(model, "feature_names_in_", []))
+            if model_feature_names:
+                X = X.reindex(columns=model_feature_names, fill_value=0)
+        
+            predicted_points = float(model.predict(X)[0])
+        
+            line_data = get_player_points_lines(actual_name, sportsbook_lookup)
+        
+            if sportsbook_line is None:
+                if not line_data or line_data.get("points_line") is None:
+                    raise ValueError(f"No live {sportsbook_lookup} line found for {actual_name}")
+                sportsbook_line = float(line_data["points_line"])
+            else:
+                sportsbook_line = float(sportsbook_line)
+        
+            model_pick = "OVER" if predicted_points > sportsbook_line else "UNDER"
 
         model = load_model()
         model_feature_names = list(getattr(model, "feature_names_in_", []))
