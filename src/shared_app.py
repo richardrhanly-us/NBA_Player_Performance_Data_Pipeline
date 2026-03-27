@@ -380,13 +380,12 @@ def build_player_feature_row(df, player_name, sportsbook_line=None):
 
     numeric_cols = [
         "PTS", "FGM", "FGA", "FTA", "FTM", "OREB", "DREB",
-        "STL", "AST", "BLK", "PF", "TOV", "MIN"
+        "STL", "AST", "BLK", "PF", "TOV"
     ]
     for col in numeric_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    if "FG3A" in df.columns:
-        df["FG3A"] = pd.to_numeric(df["FG3A"], errors="coerce")
+    df["MIN"] = pd.to_timedelta("00:" + df["MIN"].astype(str), errors="coerce").dt.total_seconds() / 60.0
 
     df["gmsc"] = (
         df["PTS"]
