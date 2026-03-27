@@ -385,7 +385,59 @@ def build_player_feature_row(df, player_name, sportsbook_line=None):
     for col in numeric_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    df["MIN"] = pd.to_timedelta("00:" + df["MIN"].astype(str), errors="coerce").dt.total_seconds() / 60.0
+def _parse_minutes_value(val):
+    if pd.isna(val):
+        return None
+
+    text = str(val).strip()
+    if not text:
+        return None
+
+    try:
+        if ":" in text:
+            parts = text.split(":")
+            if len(parts) == 2:
+                mins = float(parts[0])
+                secs = float(parts[1])
+                return mins + (secs / 60.0)
+                
+def _parse_minutes_value(val):
+    if pd.isna(val):
+        return None
+
+    text = str(val).strip()
+    if not text:
+        return None
+
+    try:
+        if ":" in text:
+            parts = text.split(":")
+            if len(parts) == 2:
+                mins = float(parts[0])
+                secs = float(parts[1])
+                return mins + (secs / 60.0)
+
+        if text.startswith("PT"):
+            text = text.replace("PT", "")
+            mins = 0.0
+            secs = 0.0
+
+            if "M" in text:
+                m_part = text.split("M")[0]
+                mins = float(m_part) if m_part else 0.0
+                text = text.split("M")[1]
+
+            if "S" in text:
+                s_part = text.replace("S", "")
+                secs = float(s_part) if s_part else 0.0
+
+            return mins + (secs / 60.0)
+
+        return float(text)
+    except Exception:
+        return None
+
+df["MIN"] = df["MIN"].apply(_parse_minutes_value)
 
     if "FG3A" in df.columns:
         df["FG3A"] = pd.to_numeric(df["FG3A"], errors="coerce")
