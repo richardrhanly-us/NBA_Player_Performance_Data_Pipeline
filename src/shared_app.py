@@ -373,6 +373,42 @@ def get_player_gamelog_df(player_id, season):
 
 
 def build_player_feature_row(df, player_name, sportsbook_line=None):
+    def _parse_minutes_value(val):
+        if pd.isna(val):
+            return None
+
+        text = str(val).strip()
+        if not text:
+            return None
+
+        try:
+            if ":" in text:
+                parts = text.split(":")
+                if len(parts) == 2:
+                    mins = float(parts[0])
+                    secs = float(parts[1])
+                    return mins + (secs / 60.0)
+
+            if text.startswith("PT"):
+                text = text.replace("PT", "")
+                mins = 0.0
+                secs = 0.0
+
+                if "M" in text:
+                    m_part = text.split("M")[0]
+                    mins = float(m_part) if m_part else 0.0
+                    text = text.split("M")[1]
+
+                if "S" in text:
+                    s_part = text.replace("S", "")
+                    secs = float(s_part) if s_part else 0.0
+
+                return mins + (secs / 60.0)
+
+            return float(text)
+        except Exception:
+            return None
+
     df = df.copy()
     df["PLAYER_NAME"] = player_name
     df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"])
@@ -384,6 +420,141 @@ def build_player_feature_row(df, player_name, sportsbook_line=None):
     ]
     for col in numeric_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df["MIN"] = df["MIN"].apply(_parse_minutes_value)
+
+    if "FG3A" in df.columns:
+        df["FG3A"] = pd.to_numeric(df["FG3A"], errors="coerce")
+
+    df["gmsc"] = (
+        df["PTS"]
+        + 0.4 * df["FGM"]
+        - 0.7 * df["FGA"]
+        - 0.4 * (df["FTA"] - df["FTM"])
+        + 0.7 * df["OREB"]
+        + 0.3 * df["DREB"]
+        + df["STL"]
+        + 0.7 * df["AST"]
+        + 0.7 * df["BLK"]
+        - 0.4 * df["PF"]
+        - df["TOV"]
+    )
+
+    df["player_avg_pts"] = df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).expanding().mean())
+    df["player_avg_pts_sq"] = df["player_avg_pts"] ** 2
+    df["last3_pts"] = df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).rolling(3).mean())
+    df["last5_pts"] = df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).rolling(5).mean())
+    df["last10_pts"] = df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).rolling(10).mean())
+    df["last20_pts"] = df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).rolling(20).mean())
+    df["last5_fga"] = df.groupby("PLAYER_NAME")["FGA"].transform(lambda x: x.shift(1).rolling(5).mean())
+    df["last5_fta"] = df.groupby("PLAYER_NAME")["FTA"].transform(lambda x: x.shift(1).rolling(5).mean())
+    df["last5_minutes"] = df.groupby("PLAYER_NAME")["MIN"].transform(lambda x: x.shift(1).rolling(5).mean())
+    df["last5_gmsc"] = df.groupby("PLAYER_NAME")["gmsc"].transform(lambda x: x.shift(1).rolling(5).mean())
+    df["home_game"] = df["MATCHUP"].astype(str).str.contains("vs").astype(int)
+    df["days_rest"] = df.groupby("PLAYER_NAME")["GAME_DATE"].diff().dt.days.fillna(3)
+    df["is_back_to_back"] = (df["days_rest"] == 1).astype(int)
+    df["usage_proxy"] = df["FGA"] + 0.44 * df["FTA"] + df["TOV"]
+    df["last5_usage_proxy"] = df.groupby("PLAYER_NAME")["usage_proxy"].transform(lambda x: x.shift(1).rolling(5).mean())
+    df["season_minutes_avg"] = df.groupby("PLAYER_NAME")["MIN"].transform(lambda x: x.shift(1).expanding().mean())
+    df["minutes_volatility"] = df.groupby("PLAYER_NAME")["MIN"].transform(lambda x: x.shift(1).rolling(5).std())
+    df["points_volatility"] = df.groupby("PLAYER_NAME")["PTS"].transform(lambda x: x.shift(1).rolling(5).std())
+    df["opponent"] = df["MATCHUP"].astype(str).str.split().str[-1]
+
+    df["opp_pts_allowed"] = df.groupby("opponent")["PTS"].transform(
+        lambda x: x.shift(1).rolling(10).mean()
+    )
+
+    df["opp_pts_allowed_last5"] = df.groupby("opponent")["PTS"].transform(
+        lambda x: x.shift(1).rolling(5).mean()
+    )
+
+    df["is_star"] = (df["player_avg_pts"] >= 20).astype(int)
+    df["closing_line"] = float(sportsbook_line) if sportsbook_line is not None else df["player_avg_pts"]
+
+    if "FG3A" in df.columns:
+        df["last5_3pa"] = df.groupby("PLAYER_NAME")["FG3A"].transform(
+            lambda x: x.shift(1).rolling(5).mean()
+        )
+
+    required_features = [
+        "player_avg_pts",
+        "player_avg_pts_sq",
+        "season_minutes_avg",
+        "home_game",
+        "days_rest",
+        "is_back_to_back",
+        "last3_pts",
+        "last5_pts",
+        "last10_pts",
+        "last20_pts",
+        "last5_fga",
+        "last5_fta",
+        "last5_minutes",
+        "last5_gmsc",
+        "last5_usage_proxy",
+        "minutes_volatility",
+        "points_volatility",
+        "opp_pts_allowed",
+        "opp_pts_allowed_last5",
+        "is_star",
+        "closing_line"
+    ]
+
+    if "last5_3pa" in df.columns:
+        required_features.append("last5_3pa")
+
+    df_features = df.copy()
+
+    for col in required_features:
+        if col not in df_features.columns:
+            df_features[col] = pd.NA
+
+    df_features[required_features] = df_features[required_features].ffill()
+
+    core_required = [
+        "player_avg_pts",
+        "player_avg_pts_sq",
+        "season_minutes_avg",
+        "home_game",
+        "days_rest",
+        "is_back_to_back",
+        "closing_line",
+    ]
+
+    df_features = df_features.dropna(subset=core_required).reset_index(drop=True)
+    if df_features.empty:
+        return None
+
+    latest = df_features.iloc[-1]
+
+    feature_data = {
+        "player_avg_pts": latest["player_avg_pts"],
+        "player_avg_pts_sq": latest["player_avg_pts_sq"],
+        "season_minutes_avg": latest["season_minutes_avg"],
+        "home_game": latest["home_game"],
+        "days_rest": latest["days_rest"],
+        "is_back_to_back": latest["is_back_to_back"],
+        "last3_pts": latest["last3_pts"],
+        "last5_pts": latest["last5_pts"],
+        "last10_pts": latest["last10_pts"],
+        "last20_pts": latest["last20_pts"],
+        "last5_fga": latest["last5_fga"],
+        "last5_fta": latest["last5_fta"],
+        "last5_minutes": latest["last5_minutes"],
+        "last5_gmsc": latest["last5_gmsc"],
+        "last5_usage_proxy": latest["last5_usage_proxy"],
+        "minutes_volatility": latest["minutes_volatility"],
+        "points_volatility": latest["points_volatility"],
+        "opp_pts_allowed": latest["opp_pts_allowed"],
+        "opp_pts_allowed_last5": latest["opp_pts_allowed_last5"],
+        "is_star": latest["is_star"],
+        "closing_line": latest["closing_line"]
+    }
+
+    if "last5_3pa" in df_features.columns and pd.notna(latest.get("last5_3pa", None)):
+        feature_data["last5_3pa"] = latest["last5_3pa"]
+
+    return pd.DataFrame([feature_data])
 
 def _parse_minutes_value(val):
     if pd.isna(val):
