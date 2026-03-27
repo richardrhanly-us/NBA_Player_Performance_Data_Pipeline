@@ -93,8 +93,7 @@ def append_manual_play_to_sheet1(
     edge = round(predicted_points - sportsbook_line, 2)
 
     sheet = get_results_sheet()
-    values = sheet.get_all_values()
-    next_row = len(values) + 1 if values else 2
+    next_row = len(sheet.col_values(1)) + 1
 
     row_values = [[
         actual_name,
