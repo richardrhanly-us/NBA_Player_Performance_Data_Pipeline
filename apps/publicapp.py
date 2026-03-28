@@ -82,7 +82,7 @@ st.set_page_config(
     layout="centered",
 )
 
-st_autorefresh(interval=15000, key="live_refresh")
+st_autorefresh(interval=120000, key="live_refresh")
 
 if "selected_player_from_top_play" not in st.session_state:
     st.session_state.selected_player_from_top_play = None
