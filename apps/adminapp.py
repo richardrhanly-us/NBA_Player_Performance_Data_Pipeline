@@ -1131,36 +1131,38 @@ with operations_tab:
         else:
             loaded_count = 0
             failed_items = []
+            remaining_queue = []
             progress_bar = st.progress(0)
-
+            
             total_items = len(queue_items)
-
+            
             for idx, item in enumerate(queue_items, start=1):
                 try:
                     status_placeholder.info(
                         f"Writing {idx}/{total_items}: "
                         f"{item['player_name']} | {item['sportsbook']} {item['sportsbook_line']}"
                     )
-
+            
                     result = append_manual_play_to_sheet1(
                         player_name=item["player_name"],
                         sportsbook_key=item["sportsbook"],
                         sportsbook_line=item["sportsbook_line"],
                     )
-                    
-                
+            
                     loaded_count += 1
-
+            
                 except Exception as e:
                     error_msg = f"{item['player_name']} | {item['sportsbook']} {item['sportsbook_line']} | {e}"
                     failed_items.append(error_msg)
+                    remaining_queue.append(item)
                     status_placeholder.error(error_msg)
-
+            
                 progress_bar.progress(idx / total_items)
                 time.sleep(1.25)
-
-            st.session_state.manual_add_queue = []
+            
+            st.session_state.manual_add_queue = remaining_queue
             st.cache_data.clear()
+            st.cache_resource.clear()
             write_admin_log(
                 action="manual_queue_load",
                 source="admin_manual",
