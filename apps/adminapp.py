@@ -616,13 +616,12 @@ with overview_tab:
             unsafe_allow_html=True
         )
 
-    st.markdown('<div class="section-card"><div class="section-title">Health Check</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-card"><div class="section-title">Strong Plays Status</div>', unsafe_allow_html=True)
 
     if health:
         st.markdown(
             f"""
             <div class="status-box">
-                <div><span class="muted">Last Update:</span> {format_last_update(health.get("last_update"))}</div>
                 <div><span class="muted">Total Plays:</span> {health.get("total", 0)}</div>
                 <div><span class="muted">Graded:</span> {health.get("graded", 0)} &nbsp; | &nbsp; <span class="muted">Pending:</span> {health.get("pending", 0)}</div>
             </div>
@@ -630,7 +629,7 @@ with overview_tab:
             unsafe_allow_html=True
         )
     else:
-        st.warning("Could not load Strong Plays health data.")
+        st.warning("Could not load Strong Plays status.")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
