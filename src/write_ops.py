@@ -112,7 +112,6 @@ def append_manual_play_to_sheet1(
     ]
 
     sheet.append_row(row_values, value_input_option="USER_ENTERED")
-    clear_app_caches()
 
     return {
         "player_name": actual_name,
@@ -178,7 +177,6 @@ def append_play_to_strong_plays(
     ]
 
     sheet.append_row(row_values, value_input_option="USER_ENTERED")
-    clear_app_caches()
 
     return {
         "player_name": actual_name,
