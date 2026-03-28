@@ -840,7 +840,7 @@ def get_player_lookup():
     return actual_name_to_id, player_names
 
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=60)
 def build_prediction(player_name, sportsbook_line):
     model = load_model()
     model_stats = load_model_stats()
