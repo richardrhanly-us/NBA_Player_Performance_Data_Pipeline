@@ -504,8 +504,8 @@ overview_tab, operations_tab, logs_tab, usage_tab, review_tab = st.tabs([
 
 
 with overview_tab:
-    top_games_win_rate, top_games_total = None, 0
-    health = None
+    top_games_win_rate, top_games_total = get_strong_plays_summary()
+    health = get_strong_plays_health()
     usage_logs_df = get_usage_logs_df()
     usage_summary = build_usage_summary(usage_logs_df)
 
