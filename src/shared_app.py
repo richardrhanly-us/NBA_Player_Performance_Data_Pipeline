@@ -977,15 +977,17 @@ def get_top_plays_today_df(api_key, debug=False):
         
         rows.append({
             "PLAYER_NAME": actual_name,
-            "sportsbook": sportsbook_key,          # internal use (normalized)
-            "sportsbook_name": sportsbook_name,    # display name
+            "GAME_DATE": format_event_game_date(row.get("commence_time", "")),
+            "sportsbook": sportsbook_key,
+            "sportsbook_name": sportsbook_name,
             "sportsbook_line": line,
+            "last_update": row.get("last_update", ""),
             "predicted_points": round(predicted_points, 2),
             "edge": round(edge, 2),
             "model_pick": "OVER" if edge > 0 else "UNDER",
-            "home_team": row["home_team"],
-            "away_team": row["away_team"],
-            "commence_time": row["commence_time"]
+            "home_team": row.get("home_team", ""),
+            "away_team": row.get("away_team", ""),
+            "commence_time": row.get("commence_time", "")
         })
 
     if debug and status_box is not None:
