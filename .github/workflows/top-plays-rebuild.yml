@@ -1,0 +1,32 @@
+name: Top Plays Rebuild
+
+on:
+  schedule:
+    - cron: "45 15 * * *"  # 10:45 AM Chicago (15 min after loader)
+    - cron: "45 19 * * *"  # 2:45 PM Chicago
+    - cron: "15 22 * * *"  # 5:15 PM Chicago
+  workflow_dispatch:
+
+jobs:
+  top-plays-rebuild:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Top Plays rebuild
+        env:
+          GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: |
+          python scripts/top_plays_rebuild.py
