@@ -191,14 +191,13 @@ st.markdown(
     }
 
     .top-play-card {
-        background: rgba(15,23,42,0.88);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 14px;
-        padding: 14px 16px;
-        margin-bottom: 10px;
-        box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+        border-radius: 16px;
+        padding: 16px 18px;
+        margin-bottom: 12px;
+        box-shadow: 0 8px 22px rgba(0,0,0,0.22);
         cursor: pointer;
         transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+        overflow: hidden;
     }
 
     .top-play-card:hover {
@@ -223,6 +222,34 @@ st.markdown(
     .top-play-meta {
         color: #94a3b8;
         font-size: 0.88rem;
+    }
+
+    .top-play-card-inner {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .top-play-headshot {
+        width: 68px;
+        height: 68px;
+        border-radius: 16px;
+        object-fit: cover;
+        border: 1px solid rgba(255,255,255,0.14);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.28);
+        flex-shrink: 0;
+        background: rgba(255,255,255,0.04);
+    }
+
+    .top-play-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .top-play-team {
+        color: #cbd5e1;
+        font-size: 0.84rem;
+        margin-bottom: 4px;
     }
 
     .section-card {
@@ -434,6 +461,55 @@ def hex_to_rgba(hex_color: str, alpha: float) -> str:
 def get_team_theme(team_abbr: str):
     return TEAM_THEMES.get(team_abbr, {"primary": "#38bdf8", "secondary": "#60a5fa"})
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_top_play_visuals(player_name):
+    try:
+        actual_name_to_id, normalized_to_actual = load_active_players()
+        normalized = normalize_name(player_name)
+        actual_name = normalized_to_actual.get(normalized, player_name)
+        player_id = actual_name_to_id.get(actual_name)
+
+        if not player_id:
+            return {
+                "actual_name": actual_name,
+                "headshot_url": "",
+                "team_name": "",
+                "team_abbr": "",
+                "primary": "#38bdf8",
+                "secondary": "#60a5fa",
+            }
+
+        player_info_df = get_player_info_df(player_id)
+
+        team_name = ""
+        team_abbr = ""
+
+        if player_info_df is not None and not player_info_df.empty:
+            if "TEAM_NAME" in player_info_df.columns:
+                team_name = str(player_info_df.iloc[0].get("TEAM_NAME", "") or "")
+            if "TEAM_ABBREVIATION" in player_info_df.columns:
+                team_abbr = str(player_info_df.iloc[0].get("TEAM_ABBREVIATION", "") or "")
+
+        theme = get_team_theme(team_abbr)
+
+        return {
+            "actual_name": actual_name,
+            "headshot_url": get_player_headshot_url(player_id) or "",
+            "team_name": team_name,
+            "team_abbr": team_abbr,
+            "primary": theme["primary"],
+            "secondary": theme["secondary"],
+        }
+
+    except Exception:
+        return {
+            "actual_name": str(player_name),
+            "headshot_url": "",
+            "team_name": "",
+            "team_abbr": "",
+            "primary": "#38bdf8",
+            "secondary": "#60a5fa",
+        }
 
 def get_pick_label(edge):
     abs_edge = abs(edge)
@@ -1110,14 +1186,42 @@ try:
 
             href = f"?player={quote_plus(player_name)}&book={quote_plus(book_name)}"
 
+            visuals = get_top_play_visuals(player_name)
+            headshot_url = visuals.get("headshot_url", "")
+            team_name = visuals.get("team_name", "")
+            primary = visuals.get("primary", "#38bdf8")
+            secondary = visuals.get("secondary", "#60a5fa")
+
+            card_bg = (
+                f"linear-gradient(135deg, "
+                f"{hex_to_rgba(primary, 0.22)} 0%, "
+                f"{hex_to_rgba(secondary, 0.16)} 42%, "
+                f"rgba(15,23,42,0.95) 100%)"
+            )
+
+            card_border = hex_to_rgba(primary, 0.95)
+
+            team_line = team_name if team_name else "NBA"
+
             st.markdown(
                 f"""
                 <a class="top-play-link" href="{href}">
-                    <div class="top-play-card">
-                        <div class="top-play-title">{player_name} — {pick} {line_text}</div>
-                        <div class="top-play-sub">{matchup}</div>
-                        <div class="top-play-meta">{game_time_text}</div>
-                        <div class="top-play-meta">Projection: {pred_text} | Edge: {edge_text}</div>
+                    <div class="top-play-card"
+                         style="background:{card_bg}; border:1.5px solid {card_border};">
+                        <div class="top-play-card-inner">
+                            <img
+                                src="{headshot_url}"
+                                class="top-play-headshot"
+                                onerror="this.style.display='none';"
+                            >
+                            <div class="top-play-content">
+                                <div class="top-play-title">{player_name} — {pick} {line_text}</div>
+                                <div class="top-play-team">{team_line}</div>
+                                <div class="top-play-sub">{matchup}</div>
+                                <div class="top-play-meta">{game_time_text}</div>
+                                <div class="top-play-meta">Projection: {pred_text} | Edge: {edge_text}</div>
+                            </div>
+                        </div>
                     </div>
                 </a>
                 """,
