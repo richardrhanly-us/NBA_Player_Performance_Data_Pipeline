@@ -1114,13 +1114,13 @@ try:
         if not player_name:
             continue
 
-      try:
-        top_plays_df = get_top_plays_live_df().copy()
-    
-        if "game_status" in top_plays_df.columns:
-            top_plays_df = top_plays_df[
-                ~top_plays_df["game_status"].astype(str).str.upper().str.contains("FINAL", na=False)
-            ].copy() 
+        try:
+            top_plays_df = get_top_plays_live_df().copy()
+        
+            if "game_status" in top_plays_df.columns:
+                top_plays_df = top_plays_df[
+                    ~top_plays_df["game_status"].astype(str).str.upper().str.contains("FINAL", na=False)
+                ].copy()
 
     top_plays_df["sportsbook_line"] = pd.to_numeric(
         top_plays_df.get("sportsbook_line"),
