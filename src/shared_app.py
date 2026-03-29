@@ -992,8 +992,20 @@ def get_top_plays_today_df(api_key, debug=False):
         status_box.empty()
         progress_bar.empty()
 
+    
+    print(
+        "[PIPELINE] Skip summary | "
+        f"unresolved_name={skipped_unresolved_name} | "
+        f"missing_player_id={skipped_missing_player_id} | "
+        f"empty_gamelog={skipped_empty_gamelog} | "
+        f"empty_features={skipped_empty_features} | "
+        f"missing_line={skipped_missing_line} | "
+        f"below_edge={skipped_below_edge}",
+        flush=True
+    )
+    
     print(f"[PIPELINE] Rows that passed edge threshold: {len(rows)}", flush=True)
-
+    
     if not rows:
         return pd.DataFrame()
 
