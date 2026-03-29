@@ -375,7 +375,7 @@ def get_player_gamelog_df(player_id, season):
         return playergamelog.PlayerGameLog(
             player_id=player_id,
             season=season,
-            timeout=6
+            timeout=12
         ).get_data_frames()[0]
     except Exception as e:
         print(f"[PIPELINE] Gamelog failed for player_id={player_id}: {e}", flush=True)
