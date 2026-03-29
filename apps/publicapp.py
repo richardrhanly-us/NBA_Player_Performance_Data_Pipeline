@@ -82,7 +82,7 @@ st.set_page_config(
     layout="centered",
 )
 
-st_autorefresh(interval=120000, key="live_refresh")
+st_autorefresh(interval=300000, key="live_refresh")
 
 if "selected_player_from_top_play" not in st.session_state:
     st.session_state.selected_player_from_top_play = None
@@ -1114,31 +1114,13 @@ try:
         if not player_name:
             continue
 
-        try:
-            current_line_data = get_player_points_lines(player_name, sportsbook)
-        except Exception:
-            current_line_data = None
+      try:
+    top_plays_df = get_top_plays_live_df().copy()
 
-        if not current_line_data:
-            continue
-
-        current_line = current_line_data.get("points_line")
-        if current_line is None:
-            continue
-
-        try:
-            live_stats = get_live_player_stats(player_name)
-        except Exception:
-            live_stats = None
-
-        if live_stats:
-            game_status_text = str(live_stats.get("game_status", "")).upper()
-            if "FINAL" in game_status_text:
-                continue
-
-        validated_rows.append(row)
-
-    top_plays_df = pd.DataFrame(validated_rows)
+    if "game_status" in top_plays_df.columns:
+        top_plays_df = top_plays_df[
+            ~top_plays_df["game_status"].astype(str).str.upper().str.contains("FINAL", na=False)
+        ].copy() 
 
     top_plays_df["sportsbook_line"] = pd.to_numeric(
         top_plays_df.get("sportsbook_line"),
