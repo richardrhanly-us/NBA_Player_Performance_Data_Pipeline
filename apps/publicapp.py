@@ -1115,11 +1115,16 @@ try:
             continue
 
     try:
+        # Load prebuilt data ONLY (fast)
         top_plays_df = get_top_plays_live_df().copy()
     
+        # Remove finished games if column exists
         if "game_status" in top_plays_df.columns:
             top_plays_df = top_plays_df[
-                ~top_plays_df["game_status"].astype(str).str.upper().str.contains("FINAL", na=False)
+                ~top_plays_df["game_status"]
+                .astype(str)
+                .str.upper()
+                .str.contains("FINAL", na=False)
             ].copy()
 
     top_plays_df["sportsbook_line"] = pd.to_numeric(
