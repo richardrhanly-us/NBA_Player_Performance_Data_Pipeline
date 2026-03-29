@@ -92,5 +92,5 @@ Predictions are converted into probabilities using the model’s error distribut
 
 ### Example Output
 <p align="center">
-  <img src="images/appimg2.JPG" width="1000"/>
+  <img src="images/appcapture.PNG" width="1000"/>
 </p>
