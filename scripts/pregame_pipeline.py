@@ -5,6 +5,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+import psycopg
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -22,6 +23,41 @@ from src.write_ops import append_manual_play_to_sheet1
 
 def log(msg):
     print(msg, flush=True)
+
+
+def get_db_connection():
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        raise ValueError("DATABASE_URL not found in environment")
+    return psycopg.connect(database_url)
+
+
+def insert_line_snapshot(player_name, game_date, line, sportsbook):
+    insert_sql = """
+    INSERT INTO line_snapshots (
+        player_name,
+        game_date,
+        sportsbook_line,
+        sportsbook,
+        captured_at
+    ) VALUES (
+        %s, %s, %s, %s, %s
+    );
+    """
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                insert_sql,
+                (
+                    player_name,
+                    game_date,
+                    line,
+                    sportsbook,
+                    datetime.now(ZoneInfo("America/Chicago")),
+                ),
+            )
+        conn.commit()
 
 
 def normalize_last_update_for_sort(value):
@@ -66,60 +102,79 @@ def append_historical_lines(scan_df, sportsbook_key):
         log("[PREGAME] Historical Lines skipped: no scan rows")
         return 0
 
-    historical_ws = get_historical_lines_sheet()
-    existing_values = historical_ws.get_all_values()
-
-    existing_keys = set()
-    if len(existing_values) > 1:
-        for row in existing_values[1:]:
-            if len(row) >= 4:
-                existing_player = str(row[0]).strip()
-                existing_date = str(row[1]).strip()
-                existing_line = str(row[2]).strip()
-                existing_book = str(row[3]).strip().lower()
-
-                if existing_player and existing_date and existing_line and existing_book:
-                    existing_keys.add((
-                        existing_player,
-                        existing_date,
-                        existing_line,
-                        existing_book
-                    ))
-
     today_date = datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d")
-    captured_at = pd.Timestamp.now(tz="America/Chicago").strftime("%Y-%m-%d %H:%M:%S")
-
-    rows_to_append = []
+    inserted_count = 0
 
     for _, row in scan_df.iterrows():
         player_name = normalize_name(str(row["player_name_raw"]).strip())
-        sportsbook_line = str(row["line"]).strip()
+        sportsbook_line = float(row["line"])
         sportsbook_name = str(sportsbook_key).strip().lower()
 
-        history_key = (
-            player_name,
-            today_date,
-            sportsbook_line,
-            sportsbook_name
-        )
+        try:
+            insert_line_snapshot(
+                player_name=player_name,
+                game_date=today_date,
+                line=sportsbook_line,
+                sportsbook=sportsbook_name,
+            )
+            inserted_count += 1
+        except Exception as e:
+            log(f"[PREGAME] Neon line_snapshot insert failed -> {player_name} | {sportsbook_line} | {e}")
 
-        if history_key not in existing_keys:
-            rows_to_append.append([
-                player_name,
-                today_date,
-                sportsbook_line,
-                sportsbook_name,
-                captured_at
-            ])
-            existing_keys.add(history_key)
+    log(f"[PREGAME] Neon line_snapshots inserted: {inserted_count}")
 
-    if rows_to_append:
-        historical_ws.append_rows(rows_to_append, value_input_option="USER_ENTERED")
-        log(f"[PREGAME] Historical Lines appended: {len(rows_to_append)}")
-        return len(rows_to_append)
+    # OLD GOOGLE SHEETS VERSION LEFT HERE ON PURPOSE FOR REFERENCE
+    # historical_ws = get_historical_lines_sheet()
+    # existing_values = historical_ws.get_all_values()
+    #
+    # existing_keys = set()
+    # if len(existing_values) > 1:
+    #     for row in existing_values[1:]:
+    #         if len(row) >= 4:
+    #             existing_player = str(row[0]).strip()
+    #             existing_date = str(row[1]).strip()
+    #             existing_line = str(row[2]).strip()
+    #             existing_book = str(row[3]).strip().lower()
+    #
+    #             if existing_player and existing_date and existing_line and existing_book:
+    #                 existing_keys.add((
+    #                     existing_player,
+    #                     existing_date,
+    #                     existing_line,
+    #                     existing_book
+    #                 ))
+    #
+    # captured_at = pd.Timestamp.now(tz="America/Chicago").strftime("%Y-%m-%d %H:%M:%S")
+    # rows_to_append = []
+    #
+    # for _, row in scan_df.iterrows():
+    #     player_name = normalize_name(str(row["player_name_raw"]).strip())
+    #     sportsbook_line = str(row["line"]).strip()
+    #     sportsbook_name = str(sportsbook_key).strip().lower()
+    #
+    #     history_key = (
+    #         player_name,
+    #         today_date,
+    #         sportsbook_line,
+    #         sportsbook_name
+    #     )
+    #
+    #     if history_key not in existing_keys:
+    #         rows_to_append.append([
+    #             player_name,
+    #             today_date,
+    #             sportsbook_line,
+    #             sportsbook_name,
+    #             captured_at
+    #         ])
+    #         existing_keys.add(history_key)
+    #
+    # if rows_to_append:
+    #     historical_ws.append_rows(rows_to_append, value_input_option="USER_ENTERED")
+    #     log(f"[PREGAME] Historical Lines appended: {len(rows_to_append)}")
+    #     return len(rows_to_append)
 
-    log("[PREGAME] Historical Lines already up to date")
-    return 0
+    return inserted_count
 
 
 def build_existing_sheet1_keys():
