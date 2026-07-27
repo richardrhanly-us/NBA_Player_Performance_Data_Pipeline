@@ -1,3 +1,5 @@
+[![Streamlit Health Check](https://github.com/richardrhanly-us/NBA_Player_Performance_Data_Pipeline/actions/workflows/streamlit-health-check.yml/badge.svg)](https://github.com/richardrhanly-us/NBA_Player_Performance_Data_Pipeline/actions/workflows/streamlit-health-check.yml)
+[![Python Code Check](https://github.com/richardrhanly-us/NBA_Player_Performance_Data_Pipeline/actions/workflows/python-check.yml/badge.svg)](https://github.com/richardrhanly-us/NBA_Player_Performance_Data_Pipeline/actions/workflows/python-check.yml)
 <a href="https://edgeanalyticsnba.streamlit.app/" target="_blank"><img src="https://static.streamlit.io/badges/streamlit_badge_black_white.svg"></a>
 
 #     NBA Player Performance Prediction
