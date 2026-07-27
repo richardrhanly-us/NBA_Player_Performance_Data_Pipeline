@@ -2,10 +2,10 @@ name: Streamlit Health Check
 
 on:
   schedule:
-    # Run every 8 hours at 17 minutes past the hour.
+    # Runs every 8 hours.
     - cron: "17 */8 * * *"
 
-  # Allows you to run it manually from the Actions tab.
+  # Allows manual runs from the Actions tab.
   workflow_dispatch:
 
 permissions:
@@ -22,30 +22,31 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - name: Check live application
+      - name: Check Streamlit health endpoint
         shell: bash
         run: |
-          APP_URL="https://edgeanalyticsnba.streamlit.app/"
+          HEALTH_URL="https://edgeanalyticsnba.streamlit.app/_stcore/health"
 
-          echo "Checking ${APP_URL}"
+          echo "Checking ${HEALTH_URL}"
 
           HTTP_STATUS=$(curl \
-            --location \
             --silent \
             --show-error \
-            --output /dev/null \
+            --output response.txt \
             --write-out "%{http_code}" \
             --max-time 120 \
             --retry 3 \
             --retry-delay 10 \
-            "${APP_URL}")
+            "${HEALTH_URL}")
 
           echo "HTTP status: ${HTTP_STATUS}"
+          echo "Response:"
+          cat response.txt || true
 
           if [ "${HTTP_STATUS}" -ge 200 ] && [ "${HTTP_STATUS}" -lt 400 ]; then
-            echo "Streamlit application is responding successfully."
+            echo "Streamlit deployment is healthy."
           else
-            echo "::error::Streamlit application returned HTTP ${HTTP_STATUS}."
+            echo "::error::Streamlit health endpoint returned HTTP ${HTTP_STATUS}."
             exit 1
           fi
 
@@ -57,7 +58,7 @@ jobs:
             echo "## NBA Pipeline Deployment Check"
             echo
             echo "- **Application:** NBA Player Performance Data Pipeline"
-            echo "- **URL:** https://edgeanalyticsnba.streamlit.app/"
+            echo "- **Health endpoint:** https://edgeanalyticsnba.streamlit.app/_stcore/health"
             echo "- **Checked:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-            echo "- **Workflow result:** ${{ job.status }}"
+            echo "- **Result:** ${{ job.status }}"
           } >> "${GITHUB_STEP_SUMMARY}"
