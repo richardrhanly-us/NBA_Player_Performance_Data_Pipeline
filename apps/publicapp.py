@@ -4,7 +4,6 @@ from urllib.parse import quote_plus
 import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
-import textwrap
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import gspread
@@ -102,10 +101,6 @@ if "top_play_click_logged" not in st.session_state:
 
 if "last_logged_search_key" not in st.session_state:
     st.session_state.last_logged_search_key = None
-
-# True = offseason/historical presentation.
-# False = full original in-season sportsbook/live behavior.
-OFFSEASON_MODE = True
 
 st.markdown(
     """
@@ -739,130 +734,7 @@ def get_player_headshot_url(player_id):
     return f"https://cdn.nba.com/headshots/nba/latest/1040x760/{player_id}.png"
 
 
-def render_model_card_offseason(
-    result,
-    model_bg,
-    model_border,
-    model_glow,
-    model_stat_bg,
-    model_stat_border,
-    model_label_color,
-    projection_label,
-    predicted_points,
-):
-    headshot_url = result.get("headshot_url") or ""
-    team_name = result.get("team_name") or ""
-    position = result.get("position") or ""
-    season_avg = result.get("season_avg")
-    last5_avg = result.get("last5_avg")
-    games_used = result.get("games_used")
-
-    team_position_line = ""
-    if team_name and position:
-        team_position_line = f"{team_name} • {position}"
-    elif team_name:
-        team_position_line = team_name
-    elif position:
-        team_position_line = position
-
-    season_avg_text = "N/A" if season_avg is None else f"{season_avg:.2f}"
-    last5_avg_text = "N/A" if last5_avg is None else f"{last5_avg:.2f}"
-    games_used_text = "N/A" if games_used is None else str(games_used)
-
-    model_card_html = textwrap.dedent(f"""\
-    <div class="model-card"
-    style="
-    background:{model_bg};
-    border:2px solid {hex_to_rgba(model_border,0.95)};
-    box-shadow:0 0 1px rgba(255,255,255,0.04),0 0 22px {model_glow};
-    ">
-
-    <div style="display:flex; align-items:center; gap:18px; margin-bottom:14px;">
-    <img
-    src="{headshot_url}"
-    style="
-    width:84px;
-    height:84px;
-    border-radius:18px;
-    object-fit:cover;
-    border:1px solid rgba(255,255,255,0.12);
-    box-shadow:0 6px 18px rgba(0,0,0,0.35);
-    flex-shrink:0;
-    "
-    onerror="this.style.display='none';"
-    >
-
-    <div>
-    <div class="model-title" style="margin-bottom:2px;">
-    {result["actual_name"]}
-    </div>
-
-    <div style="font-size:0.82rem; color:#cbd5e1; margin-bottom:6px;">
-    {team_position_line}
-    </div>
-
-    <div class="model-subtitle" style="margin-bottom:0;">
-    Player Performance Forecast • {CURRENT_SEASON}
-    </div>
-    </div>
-    </div>
-
-    <div class="model-main">
-
-    <div class="model-stat"
-    style="background:{model_stat_bg};border:1px solid {model_stat_border};">
-    <div class="model-stat-label" style="color:{model_label_color};">
-    {projection_label}
-    </div>
-    <div class="model-stat-value">
-    {predicted_points:.2f}
-    </div>
-    </div>
-
-    <div class="model-stat"
-    style="background:{model_stat_bg};border:1px solid {model_stat_border};">
-    <div class="model-stat-label" style="color:{model_label_color};">
-    {CURRENT_SEASON} Average
-    </div>
-    <div class="model-stat-value">
-    {season_avg_text}
-    </div>
-    </div>
-
-    <div class="model-stat"
-    style="background:{model_stat_bg};border:1px solid {model_stat_border};">
-    <div class="model-stat-label" style="color:{model_label_color};">
-    Last 5 Average
-    </div>
-    <div class="model-stat-value">
-    {last5_avg_text}
-    </div>
-    </div>
-
-    <div class="model-stat"
-    style="background:{model_stat_bg};border:1px solid {model_stat_border};">
-    <div class="model-stat-label" style="color:{model_label_color};">
-    {CURRENT_SEASON} Games Analyzed
-    </div>
-    <div class="model-stat-value">
-    {games_used_text}
-    </div>
-    </div>
-
-    </div>
-
-    <div class="small-note">
-    Forecast generated from the trained regression model using historical
-    player performance and rolling statistical features.
-    </div>
-
-    </div>
-    """)
-
-    st.markdown(model_card_html, unsafe_allow_html=True)
-
-
-def render_model_card_live(
+def render_model_card(
     result,
     model_bg,
     model_border,
@@ -957,7 +829,6 @@ Trained regression model output compared against the current sportsbook line.
 </div>"""
 
     st.markdown(model_card_html, unsafe_allow_html=True)
-
 
 @st.cache_resource
 def get_gsheet_client():
@@ -1168,55 +1039,21 @@ def build_prediction(player_name, sportsbook_line):
     }
 
 
-if OFFSEASON_MODE:
-    st.markdown(
-        """
-        <div class="hero">
-            <div class="hero-title">Playbook Analytics — NBA</div>
-            <p class="hero-subtitle">Player Performance Forecasting</p>
-            <p class="hero-subtitle">
-                Machine-learning analysis of NBA player scoring performance
-                using historical game data and rolling statistical features.
-            </p>
-            <div class="hero-pills">
-                <div class="hero-pill">Player Forecasts</div>
-                <div class="hero-pill">Model Evaluation</div>
-                <div class="hero-pill">Historical Analysis</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        """
-        <div class="section-card">
-            <div class="section-title">Offseason Demo Mode</div>
-            <div class="muted">
-                The NBA is currently in the offseason, so live game and sportsbook
-                data may be unavailable. Historical player data remains available
-                to demonstrate the prediction pipeline and model behavior.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-else:
-    st.markdown(
-        """
-        <div class="hero">
-            <div class="hero-title">Playbook Analytics - NBA</div>
-            <p class="hero-subtitle">NBA Player Prop Model</p>
-            <p class="hero-subtitle">Model driven insights into player point total projections</p>
-            <div class="hero-pills">
-                <div class="hero-pill">Projected points</div>
-                <div class="hero-pill">Top edges</div>
-                <div class="hero-pill">Live Stats</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+st.markdown(
+    f"""
+<div class="hero">
+    <div class="hero-title">Playbook Analytics - NBA</div>
+    <p class="hero-subtitle">NBA Player Prop Model</p>
+    <p class="hero-subtitle">Model driven insights into player point total projections</p>
+    <div class="hero-pills">
+        <div class="hero-pill">Projected points</div>
+        <div class="hero-pill">Top edges</div>
+        <div class="hero-pill">Live Stats</div>
+    </div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
 if not st.session_state.page_view_logged:
     write_usage_log(
@@ -1226,204 +1063,201 @@ if not st.session_state.page_view_logged:
     )
     st.session_state.page_view_logged = True
 
-SHOW_LIVE_FEATURES = not OFFSEASON_MODE
+top_games_win_rate, top_games_total = get_strong_plays_summary()
+health = get_strong_plays_health()
 
-if SHOW_LIVE_FEATURES:
-    top_games_win_rate, top_games_total = get_strong_plays_summary()
-    health = get_strong_plays_health()
-
-    if top_games_win_rate is not None:
-        st.markdown(
-            f"""
-            <div class="metric-box">
-                <div class="metric-label">Win Rate for Top Games</div>
-                <div class="metric-value">
-                    {top_games_win_rate:.1f}% <span style="color: #94a3b8; font-size: 0.9rem; font-weight: 600;">({top_games_total} graded games)</span>
-                </div>
+if top_games_win_rate is not None:
+    st.markdown(
+        f"""
+        <div class="metric-box">
+            <div class="metric-label">Win Rate for Top Games</div>
+            <div class="metric-value">
+                {top_games_win_rate:.1f}% <span style="color: #94a3b8; font-size: 0.9rem; font-weight: 600;">({top_games_total} graded games)</span>
             </div>
-            """,
-            unsafe_allow_html=True,
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+else:
+    st.markdown(
+        """
+        <div class="metric-box">
+            <div class="metric-label">Win Rate for Top Games</div>
+            <div class="metric-value">
+                N/A <span style="color: #94a3b8; font-size: 0.9rem; font-weight: 600;">(no graded games yet)</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+if health:
+    last_update_str = (
+        health["last_update"].strftime("%b %d, %I:%M %p")
+        if health["last_update"] is not None
+        else "N/A"
+    )
+    st.caption(
+        f"Health Check: Last update {last_update_str} | "
+        f"Graded {health.get('graded', 0)} | Pending {health.get('pending', 0)}"
+    )
+
+try:
+    top_plays_df = get_top_plays_live_df().copy()
+
+    if "game_status" in top_plays_df.columns:
+        top_plays_df = top_plays_df[
+            ~top_plays_df["game_status"].astype(str).str.upper().str.contains("FINAL", na=False)
+        ].copy()
+
+    if "sportsbook_line" in top_plays_df.columns:
+        top_plays_df["sportsbook_line"] = pd.to_numeric(
+            top_plays_df["sportsbook_line"],
+            errors="coerce",
         )
+
+    top_plays_df = top_plays_df[top_plays_df["sportsbook_line"].notna()].copy()
+    top_plays_df = top_plays_df[top_plays_df["sportsbook_line"] > 0].copy()
+    top_plays_df = top_plays_df[top_plays_df["sportsbook_line"] != 25.5].copy()
+
+    if top_plays_df.empty:
+        st.info("No top plays available right now.")
     else:
-        st.markdown(
-            """
-            <div class="metric-box">
-                <div class="metric-label">Win Rate for Top Games</div>
-                <div class="metric-value">
-                    N/A <span style="color: #94a3b8; font-size: 0.9rem; font-weight: 600;">(no graded games yet)</span>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.markdown("###  Top 3 Plays")
+        st.markdown("##### Highest confidence plays of the day")
 
-    if health:
-        last_update_str = (
-            health["last_update"].strftime("%b %d, %I:%M %p")
-            if health["last_update"] is not None
-            else "N/A"
-        )
-        st.caption(
-            f"Health Check: Last update {last_update_str} | "
-            f"Graded {health.get('graded', 0)} | Pending {health.get('pending', 0)}"
-        )
+        top3 = top_plays_df.head(3)
+        for _, row in top3.iterrows():
+            edge_val = pd.to_numeric(row.get("edge"), errors="coerce")
+            pred_val = pd.to_numeric(row.get("predicted_points"), errors="coerce")
+            line_val = pd.to_numeric(row.get("sportsbook_line"), errors="coerce")
+            player_name = row.get("PLAYER_NAME", "Player")
+            pick = row.get("model_pick", "")
+            matchup = f"{row.get('away_team', '')} @ {row.get('home_team', '')}"
+            book_name = str(row.get("sportsbook", "draftkings")).lower()
 
-    try:
-        top_plays_df = get_top_plays_live_df().copy()
+            line_text = f"{line_val:.1f}" if pd.notna(line_val) else "N/A"
+            pred_text = f"{pred_val:.2f}" if pd.notna(pred_val) else "N/A"
+            edge_text = f"{edge_val:+.2f}" if pd.notna(edge_val) else "N/A"
+            game_time_text = format_commence_time(row.get("commence_time", ""))
 
-        if "game_status" in top_plays_df.columns:
-            top_plays_df = top_plays_df[
-                ~top_plays_df["game_status"].astype(str).str.upper().str.contains("FINAL", na=False)
-            ].copy()
+            href = f"?player={quote_plus(player_name)}&book={quote_plus(book_name)}"
 
-        if "sportsbook_line" in top_plays_df.columns:
-            top_plays_df["sportsbook_line"] = pd.to_numeric(
-                top_plays_df["sportsbook_line"],
-                errors="coerce",
+            visuals = get_top_play_visuals(player_name)
+            headshot_url = visuals.get("headshot_url", "")
+            team_name = visuals.get("team_name", "")
+            primary = visuals.get("primary", "#38bdf8")
+            secondary = visuals.get("secondary", "#60a5fa")
+
+            card_bg = (
+                f"linear-gradient(135deg, "
+                f"{hex_to_rgba(primary, 0.22)} 0%, "
+                f"{hex_to_rgba(secondary, 0.16)} 42%, "
+                f"rgba(15,23,42,0.95) 100%)"
             )
 
-        top_plays_df = top_plays_df[top_plays_df["sportsbook_line"].notna()].copy()
-        top_plays_df = top_plays_df[top_plays_df["sportsbook_line"] > 0].copy()
-        top_plays_df = top_plays_df[top_plays_df["sportsbook_line"] != 25.5].copy()
+            card_border = hex_to_rgba(primary, 0.95)
 
-        if top_plays_df.empty:
-            st.info("No top plays available right now.")
-        else:
-            st.markdown("###  Top 3 Plays")
-            st.markdown("##### Highest confidence plays of the day")
-
-            top3 = top_plays_df.head(3)
-            for _, row in top3.iterrows():
-                edge_val = pd.to_numeric(row.get("edge"), errors="coerce")
-                pred_val = pd.to_numeric(row.get("predicted_points"), errors="coerce")
-                line_val = pd.to_numeric(row.get("sportsbook_line"), errors="coerce")
-                player_name = row.get("PLAYER_NAME", "Player")
-                pick = row.get("model_pick", "")
-                matchup = f"{row.get('away_team', '')} @ {row.get('home_team', '')}"
-                book_name = str(row.get("sportsbook", "draftkings")).lower()
-
-                line_text = f"{line_val:.1f}" if pd.notna(line_val) else "N/A"
-                pred_text = f"{pred_val:.2f}" if pd.notna(pred_val) else "N/A"
-                edge_text = f"{edge_val:+.2f}" if pd.notna(edge_val) else "N/A"
-                game_time_text = format_commence_time(row.get("commence_time", ""))
-
-                href = f"?player={quote_plus(player_name)}&book={quote_plus(book_name)}"
-
-                visuals = get_top_play_visuals(player_name)
-                headshot_url = visuals.get("headshot_url", "")
-                team_name = visuals.get("team_name", "")
-                primary = visuals.get("primary", "#38bdf8")
-                secondary = visuals.get("secondary", "#60a5fa")
-
-                card_bg = (
-                    f"linear-gradient(135deg, "
-                    f"{hex_to_rgba(primary, 0.22)} 0%, "
-                    f"{hex_to_rgba(secondary, 0.16)} 42%, "
-                    f"rgba(15,23,42,0.95) 100%)"
-                )
-
-                card_border = hex_to_rgba(primary, 0.95)
-
-                team_line = team_name if team_name else "NBA"
-
-                st.markdown(
-                    f"""
-                    <a class="top-play-link" href="{href}">
-                        <div class="top-play-card"
-                            style="background:{card_bg}; border:1.5px solid {card_border};">
-                            <div class="top-play-card-inner">
-                                <img
-                                    src="{headshot_url}"
-                                    class="top-play-headshot"
-                                    onerror="this.style.display='none';"
-                                >
-                                <div class="top-play-content">
-                                    <div class="top-play-title">{player_name} — {pick} {line_text}</div>
-                                    <div class="top-play-team">{team_line}</div>
-                                    <div class="top-play-sub">{matchup}</div>
-                                    <div class="top-play-meta">{game_time_text}</div>
-                                    <div class="top-play-meta">Projection: {pred_text} | Edge: {edge_text}</div>
-                                </div>
-                            </div>
-                        </div>
-                    </a>
-                    """,
-                    unsafe_allow_html=True,
-                )
+            team_line = team_name if team_name else "NBA"
 
             st.markdown(
-                '<div class="section-card"><div class="section-title">Top Plays Today</div>',
+                f"""
+                <a class="top-play-link" href="{href}">
+                    <div class="top-play-card"
+                         style="background:{card_bg}; border:1.5px solid {card_border};">
+                        <div class="top-play-card-inner">
+                            <img
+                                src="{headshot_url}"
+                                class="top-play-headshot"
+                                onerror="this.style.display='none';"
+                            >
+                            <div class="top-play-content">
+                                <div class="top-play-title">{player_name} — {pick} {line_text}</div>
+                                <div class="top-play-team">{team_line}</div>
+                                <div class="top-play-sub">{matchup}</div>
+                                <div class="top-play-meta">{game_time_text}</div>
+                                <div class="top-play-meta">Projection: {pred_text} | Edge: {edge_text}</div>
+                            </div>
+                        </div>
+                    </div>
+                </a>
+                """,
                 unsafe_allow_html=True,
             )
 
-            display_cols = [
-                col for col in [
-                    "PLAYER_NAME",
-                    "away_team",
-                    "home_team",
-                    "sportsbook_line",
-                    "predicted_points",
-                    "edge",
-                    "model_pick",
-                    "sportsbook",
-                ]
-                if col in top_plays_df.columns
-            ]
+        st.markdown(
+            '<div class="section-card"><div class="section-title">Top Plays Today</div>',
+            unsafe_allow_html=True,
+        )
 
-            display_df = top_plays_df[display_cols].copy()
-            display_df = display_df.rename(
-                columns={
-                    "PLAYER_NAME": "Player",
-                    "away_team": "Away",
-                    "home_team": "Home",
-                    "sportsbook_line": "Line",
-                    "predicted_points": "Projection",
-                    "edge": "Edge",
-                    "model_pick": "Best Bet",
-                    "sportsbook": "Book",
+        display_cols = [
+            col for col in [
+                "PLAYER_NAME",
+                "away_team",
+                "home_team",
+                "sportsbook_line",
+                "predicted_points",
+                "edge",
+                "model_pick",
+                "sportsbook",
+            ]
+            if col in top_plays_df.columns
+        ]
+
+        display_df = top_plays_df[display_cols].copy()
+        display_df = display_df.rename(
+            columns={
+                "PLAYER_NAME": "Player",
+                "away_team": "Away",
+                "home_team": "Home",
+                "sportsbook_line": "Line",
+                "predicted_points": "Projection",
+                "edge": "Edge",
+                "model_pick": "Best Bet",
+                "sportsbook": "Book",
+            }
+        )
+
+        def row_color(row):
+            edge = row.get("Edge")
+
+            if pd.isna(edge):
+                return [""] * len(row)
+
+            strength = abs(edge)
+
+            if strength >= 6:
+                color = "rgba(34,197,94,0.8)"
+            elif strength >= 3:
+                color = "rgba(34,197,94,0.4)"
+            else:
+                color = "rgba(148,163,184,0.15)"
+
+            return [f"background-color: {color};"] * len(row)
+
+        styled_df = (
+            display_df.head(10)
+            .style
+            .apply(row_color, axis=1)
+            .format(
+                {
+                    "Line": "{:.1f}",
+                    "Projection": "{:.2f}",
+                    "Edge": "{:+.2f}",
                 }
             )
+        )
 
-            def row_color(row):
-                edge = row.get("Edge")
+        st.dataframe(
+            styled_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.caption("Top plays are prebuilt from the latest updater run for faster loading.")
+except Exception as e:
+    st.info(f"Top plays are temporarily unavailable: {e}")
 
-                if pd.isna(edge):
-                    return [""] * len(row)
-
-                strength = abs(edge)
-
-                if strength >= 6:
-                    color = "rgba(34,197,94,0.8)"
-                elif strength >= 3:
-                    color = "rgba(34,197,94,0.4)"
-                else:
-                    color = "rgba(148,163,184,0.15)"
-
-                return [f"background-color: {color};"] * len(row)
-
-            styled_df = (
-                display_df.head(10)
-                .style
-                .apply(row_color, axis=1)
-                .format(
-                    {
-                        "Line": "{:.1f}",
-                        "Projection": "{:.2f}",
-                        "Edge": "{:+.2f}",
-                    }
-                )
-            )
-
-            st.dataframe(
-                styled_df,
-                use_container_width=True,
-                hide_index=True,
-            )
-            st.caption("Top plays are prebuilt from the latest updater run for faster loading.")
-    except Exception as e:
-        st.info(f"Top plays are temporarily unavailable: {e}")
-
-    st.markdown("</div>", unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown(
     '<div class="section-card"><div class="section-title">Player Projection</div>',
@@ -1459,361 +1293,296 @@ selected_player = st.selectbox(
     key="player_projection_selectbox",
 )
 
-# The player selector is shared by both modes.
+sportsbooks = get_available_sportsbooks()
+
+default_book = (
+    query_book or
+    st.session_state.get("selected_book_from_top_play") or
+    "draftkings"
+).lower()
+
+book_index = 0
+if default_book in sportsbooks:
+    book_index = sportsbooks.index(default_book)
+
+selected_book = st.selectbox(
+    "Sportsbook",
+    options=sportsbooks,
+    index=book_index if sportsbooks else None,
+    placeholder="Choose a sportsbook...",
+    key="sportsbook_selectbox",
+)
+
 st.session_state.selected_player_from_top_play = selected_player
+st.session_state.selected_book_from_top_play = selected_book
 
-if OFFSEASON_MODE:
-    sportsbook_line = None
-    selected_book = None
-    line_is_live = False
+live_line = None
+player_lines = None
 
-    if selected_player:
-        with st.spinner("Building player forecast..."):
-            result = build_prediction(selected_player, None)
-
-        search_key = f"{selected_player}|forecast"
-
-        if st.session_state.last_logged_search_key != search_key:
-            write_usage_log(
-                event_type="search",
-                session_id=st.session_state.session_id,
-                player_name=selected_player,
-                sportsbook="",
-                details="player_forecast"
-            )
-            st.session_state.last_logged_search_key = search_key
-
-        if result.get("error"):
-            st.error(result["error"])
-        else:
-            team_theme = get_team_theme(result.get("team_abbr") or "")
-            primary = team_theme["primary"]
-            secondary = team_theme["secondary"]
-
-            model_bg = (
-                f"linear-gradient(135deg, "
-                f"{hex_to_rgba(primary, 0.35)} 0%, "
-                f"{hex_to_rgba(secondary, 0.25)} 50%, "
-                f"rgba(15, 23, 42, 0.95) 100%)"
-            )
-            model_border = primary
-            model_glow = hex_to_rgba(primary, 0.28)
-            model_stat_bg = "rgba(255, 255, 255, 0.06)"
-            model_stat_border = hex_to_rgba(secondary, 0.32)
-            model_label_color = "#cbd5e1"
-
-            predicted_points = result["predicted_points"]
-            base_predicted_points = result.get("base_predicted_points")
-            live_stats = result.get("live_stats")
-            projection_label = "Live Adjusted Projection" if live_stats else "Predicted Points"
-
-            render_model_card_offseason(
-                result=result,
-                model_bg=model_bg,
-                model_border=model_border,
-                model_glow=model_glow,
-                model_stat_bg=model_stat_bg,
-                model_stat_border=model_stat_border,
-                model_label_color=model_label_color,
-                projection_label=projection_label,
-                predicted_points=predicted_points,
-            )
-
-            if live_stats and base_predicted_points is not None:
-                st.caption(
-                    f"Pregame model: {base_predicted_points:.2f} | "
-                    f"Live-adjusted projection: {predicted_points:.2f}"
-                )
-
-else:
-    # ORIGINAL IN-SEASON SPORTSBOOK / LIVE-LINE WORKFLOW
-    sportsbooks = get_available_sportsbooks()
-
-    default_book = (
-        query_book or
-        st.session_state.get("selected_book_from_top_play") or
-        "draftkings"
-    ).lower()
-
-    book_index = 0
-    if default_book in sportsbooks:
-        book_index = sportsbooks.index(default_book)
-
-    selected_book = st.selectbox(
-        "Sportsbook",
-        options=sportsbooks,
-        index=book_index if sportsbooks else None,
-        placeholder="Choose a sportsbook...",
-        key="sportsbook_selectbox",
+if selected_player and selected_book:
+    loading_placeholder = st.empty()
+    loading_placeholder.markdown(
+        '<div class="line-loading">Loading live sportsbook line...</div>',
+        unsafe_allow_html=True,
     )
 
-    st.session_state.selected_book_from_top_play = selected_book
+    try:
+        player_lines = get_player_points_lines(selected_player, selected_book)
+        if player_lines:
+            live_line = player_lines.get("points_line")
+    except Exception as e:
+        st.warning(f"Could not load sportsbook line: {e}")
+    finally:
+        loading_placeholder.empty()
 
-    live_line = None
-    player_lines = None
+manual_default = float(live_line) if live_line is not None else 25.5
 
-    if selected_player and selected_book:
-        loading_placeholder = st.empty()
-        loading_placeholder.markdown(
-            '<div class="line-loading">Loading live sportsbook line...</div>',
-            unsafe_allow_html=True,
+
+line_is_live = live_line is not None
+line_status = "live" if line_is_live else "manual_input"
+
+sportsbook_line = st.number_input(
+    "Sportsbook points line",
+    min_value=0.0,
+    max_value=80.0,
+    value=manual_default,
+    step=0.5,
+    key=f"sportsbook_line_{selected_player}_{selected_book}",
+)
+
+manual_override = (
+    line_is_live and
+    float(sportsbook_line) != float(live_line)
+)
+
+
+if line_status == "live" and not manual_override:
+    st.caption(f"Live line • {selected_book}: {float(live_line):.1f}")
+elif manual_override:
+    st.caption(f"Manual override • using {float(sportsbook_line):.1f}")
+else:
+    st.caption(f"Manual input • using {float(sportsbook_line):.1f}")
+
+if selected_player:
+    with st.spinner("Building projection..."):
+        result = build_prediction(selected_player, float(sportsbook_line))
+
+    search_key = f"{selected_player}|{selected_book}|{sportsbook_line}"
+
+    if st.session_state.last_logged_search_key != search_key:
+        write_usage_log(
+            event_type="search",
+            session_id=st.session_state.session_id,
+            player_name=selected_player,
+            sportsbook=selected_book,
+            details=f"line={sportsbook_line}"
+        )
+        st.session_state.last_logged_search_key = search_key
+
+    game_is_final = False
+    if result.get("live_stats"):
+        game_status_text = str(result["live_stats"].get("game_status", "")).upper()
+        game_is_final = "FINAL" in game_status_text
+
+    if game_is_final and not line_is_live:
+        st.warning("This game is final and no live sportsbook line is available. Projection is hidden.")
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.stop()
+
+    if result.get("error"):
+        st.error(result["error"])
+    else:
+        team_theme = get_team_theme(result.get("team_abbr") or "")
+        primary = team_theme["primary"]
+        secondary = team_theme["secondary"]
+
+        model_bg = (
+            f"linear-gradient(135deg, "
+            f"{hex_to_rgba(primary, 0.35)} 0%, "
+            f"{hex_to_rgba(secondary, 0.25)} 50%, "
+            f"rgba(15, 23, 42, 0.95) 100%)"
+        )
+        model_border = primary
+        model_glow = hex_to_rgba(primary, 0.28)
+        model_stat_bg = "rgba(255, 255, 255, 0.06)"
+        model_stat_border = hex_to_rgba(secondary, 0.32)
+        model_label_color = "#cbd5e1"
+
+        predicted_points = result["predicted_points"]
+        base_predicted_points = result.get("base_predicted_points")
+        season_avg = result.get("season_avg")
+        last5_avg = result.get("last5_avg")
+        games_used = result.get("games_used")
+        edge = result.get("edge")
+        over_prob = result.get("over_prob")
+        under_prob = result.get("under_prob")
+        live_stats = result.get("live_stats")
+
+        if edge is not None:
+            pick_text, pick_kind = get_pick_label(edge)
+        else:
+            pick_text, pick_kind = "No Posted Line", "neutral"
+
+        if pick_kind == "over":
+            pick_bg = "rgba(34,197,94,0.25)"
+            pick_border = "#22c55e"
+            pick_text_color = "#22c55e"
+        elif pick_kind == "under":
+            pick_bg = "rgba(239,68,68,0.25)"
+            pick_border = "#ef4444"
+            pick_text_color = "#ef4444"
+        else:
+            pick_bg = "rgba(148,163,184,0.12)"
+            pick_border = "#94a3b8"
+            pick_text_color = "#e5e7eb"
+
+        probability_text = "N/A"
+        if over_prob is not None and under_prob is not None:
+            probability_text = f"O {over_prob * 100:.1f}% / U {under_prob * 100:.1f}%"
+
+        if edge is None:
+            interpretation_text = ""
+        elif abs(edge) < 1.5:
+            interpretation_text = (
+                f"The model projects {predicted_points:.2f} points against a line of {sportsbook_line:.1f}, "
+                f"which is too close to call confidently."
+            )
+        else:
+            over_text = f"{over_prob:.0%}" if over_prob is not None else "N/A"
+            under_text = f"{under_prob:.0%}" if under_prob is not None else "N/A"
+            interpretation_text = (
+                f"The model projects a {over_text} chance of the over hitting compared to "
+                f"{under_text} for the under."
+            )
+
+        edge_text = f"{edge:+.2f}" if edge is not None else "N/A"
+        projection_label = "Live Adjusted Projection" if live_stats else "Predicted Points"
+
+        render_model_card(
+            result=result,
+            model_bg=model_bg,
+            model_border=model_border,
+            model_glow=model_glow,
+            model_stat_bg=model_stat_bg,
+            model_stat_border=model_stat_border,
+            model_label_color=model_label_color,
+            projection_label=projection_label,
+            predicted_points=predicted_points,
+            sportsbook_line=sportsbook_line,
+            edge_text=edge_text,
+            probability_text=probability_text,
+            interpretation_text=interpretation_text,
+            pick_bg=pick_bg,
+            pick_border=pick_border,
+            pick_text_color=pick_text_color,
+            pick_text=pick_text,
         )
 
-        try:
-            player_lines = get_player_points_lines(selected_player, selected_book)
-            if player_lines:
-                live_line = player_lines.get("points_line")
-        except Exception as e:
-            st.warning(f"Could not load sportsbook line: {e}")
-        finally:
-            loading_placeholder.empty()
-
-    manual_default = float(live_line) if live_line is not None else 25.5
-
-    line_is_live = live_line is not None
-    line_status = "live" if line_is_live else "manual_input"
-
-    sportsbook_line = st.number_input(
-        "Sportsbook points line",
-        min_value=0.0,
-        max_value=80.0,
-        value=manual_default,
-        step=0.5,
-        key=f"sportsbook_line_{selected_player}_{selected_book}",
-    )
-
-    manual_override = (
-        line_is_live and
-        float(sportsbook_line) != float(live_line)
-    )
-
-    if line_status == "live" and not manual_override:
-        st.caption(f"Live line • {selected_book}: {float(live_line):.1f}")
-    elif manual_override:
-        st.caption(f"Manual override • using {float(sportsbook_line):.1f}")
-    else:
-        st.caption(f"Manual input • using {float(sportsbook_line):.1f}")
-
-    if selected_player:
-        with st.spinner("Building projection..."):
-            result = build_prediction(selected_player, float(sportsbook_line))
-
-        search_key = f"{selected_player}|{selected_book}|{sportsbook_line}"
-
-        if st.session_state.last_logged_search_key != search_key:
-            write_usage_log(
-                event_type="search",
-                session_id=st.session_state.session_id,
-                player_name=selected_player,
-                sportsbook=selected_book,
-                details=f"line={sportsbook_line}"
-            )
-            st.session_state.last_logged_search_key = search_key
-
-        game_is_final = False
-        if result.get("live_stats"):
-            game_status_text = str(result["live_stats"].get("game_status", "")).upper()
-            game_is_final = "FINAL" in game_status_text
-
-        if game_is_final and not line_is_live:
-            st.warning("This game is final and no live sportsbook line is available. Projection is hidden.")
-            st.markdown("</div>", unsafe_allow_html=True)
-            st.stop()
-
-        if result.get("error"):
-            st.error(result["error"])
-        else:
-            team_theme = get_team_theme(result.get("team_abbr") or "")
-            primary = team_theme["primary"]
-            secondary = team_theme["secondary"]
-
-            model_bg = (
-                f"linear-gradient(135deg, "
-                f"{hex_to_rgba(primary, 0.35)} 0%, "
-                f"{hex_to_rgba(secondary, 0.25)} 50%, "
-                f"rgba(15, 23, 42, 0.95) 100%)"
-            )
-            model_border = primary
-            model_glow = hex_to_rgba(primary, 0.28)
-            model_stat_bg = "rgba(255, 255, 255, 0.06)"
-            model_stat_border = hex_to_rgba(secondary, 0.32)
-            model_label_color = "#cbd5e1"
-
-            predicted_points = result["predicted_points"]
-            base_predicted_points = result.get("base_predicted_points")
-            season_avg = result.get("season_avg")
-            last5_avg = result.get("last5_avg")
-            games_used = result.get("games_used")
-            edge = result.get("edge")
-            over_prob = result.get("over_prob")
-            under_prob = result.get("under_prob")
-            live_stats = result.get("live_stats")
-
-            if edge is not None:
-                pick_text, pick_kind = get_pick_label(edge)
-            else:
-                pick_text, pick_kind = "No Posted Line", "neutral"
-
-            if pick_kind == "over":
-                pick_bg = "rgba(34,197,94,0.25)"
-                pick_border = "#22c55e"
-                pick_text_color = "#22c55e"
-            elif pick_kind == "under":
-                pick_bg = "rgba(239,68,68,0.25)"
-                pick_border = "#ef4444"
-                pick_text_color = "#ef4444"
-            else:
-                pick_bg = "rgba(148,163,184,0.12)"
-                pick_border = "#94a3b8"
-                pick_text_color = "#e5e7eb"
-
-            probability_text = "N/A"
-            if over_prob is not None and under_prob is not None:
-                probability_text = f"O {over_prob * 100:.1f}% / U {under_prob * 100:.1f}%"
-
-            if edge is None:
-                interpretation_text = ""
-            elif abs(edge) < 1.5:
-                interpretation_text = (
-                    f"The model projects {predicted_points:.2f} points against a line of {sportsbook_line:.1f}, "
-                    f"which is too close to call confidently."
-                )
-            else:
-                over_text = f"{over_prob:.0%}" if over_prob is not None else "N/A"
-                under_text = f"{under_prob:.0%}" if under_prob is not None else "N/A"
-                interpretation_text = (
-                    f"The model projects a {over_text} chance of the over hitting compared to "
-                    f"{under_text} for the under."
-                )
-
-            edge_text = f"{edge:+.2f}" if edge is not None else "N/A"
-            projection_label = "Live Adjusted Projection" if live_stats else "Predicted Points"
-
-            render_model_card_live(
-                result=result,
-                model_bg=model_bg,
-                model_border=model_border,
-                model_glow=model_glow,
-                model_stat_bg=model_stat_bg,
-                model_stat_border=model_stat_border,
-                model_label_color=model_label_color,
-                projection_label=projection_label,
-                predicted_points=predicted_points,
-                sportsbook_line=sportsbook_line,
-                edge_text=edge_text,
-                probability_text=probability_text,
-                interpretation_text=interpretation_text,
-                pick_bg=pick_bg,
-                pick_border=pick_border,
-                pick_text_color=pick_text_color,
-                pick_text=pick_text,
+        if live_stats and base_predicted_points is not None:
+            st.caption(
+                f"Pregame model: {base_predicted_points:.2f} | "
+                f"Live-adjusted projection: {predicted_points:.2f}"
             )
 
-            if live_stats and base_predicted_points is not None:
-                st.caption(
-                    f"Pregame model: {base_predicted_points:.2f} | "
-                    f"Live-adjusted projection: {predicted_points:.2f}"
-                )
+        if over_prob is not None and under_prob is not None:
+            prob_col1, prob_col2 = st.columns(2)
 
-            if over_prob is not None and under_prob is not None:
-                prob_col1, prob_col2 = st.columns(2)
-
-                with prob_col1:
-                    st.markdown(
-                        f"""
-                        <div class="mini-card">
-                            <div class="mini-title">Over Probability</div>
-                            <div class="mini-value">{over_prob * 100:.1f}%</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-
-                with prob_col2:
-                    st.markdown(
-                        f"""
-                        <div class="mini-card">
-                            <div class="mini-title">Under Probability</div>
-                            <div class="mini-value">{under_prob * 100:.1f}%</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-
-            if live_stats:
-                st.markdown("#### Live Game Status")
-
-                live_col1, live_col2, live_col3 = st.columns(3)
-
-                with live_col1:
-                    st.markdown(
-                        f"""
-                        <div class="mini-card">
-                            <div class="mini-title">Current Points</div>
-                            <div class="mini-value">{safe_live_display(live_stats.get('points', 'N/A'))}</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-
-                with live_col2:
-                    st.markdown(
-                        f"""
-                        <div class="mini-card">
-                            <div class="mini-title">Minutes</div>
-                            <div class="mini-value">{format_minutes(live_stats.get('minutes'))}</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-
-                with live_col3:
-                    game_status = format_game_status_short(live_stats.get("game_status"), live_stats)
-                    game_clock = format_game_clock(live_stats.get("game_clock"))
-
-                    st.markdown(
-                        f"""
-                        <div class="mini-card">
-                            <div class="mini-title">Game</div>
-                            <div class="mini-value">{game_status} • {game_clock}</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-
-            subcol1, subcol2, subcol3 = st.columns(3)
-
-            with subcol1:
-                season_text = "N/A" if season_avg is None else f"{season_avg:.2f}"
+            with prob_col1:
                 st.markdown(
                     f"""
                     <div class="mini-card">
-                        <div class="mini-title">Season Avg</div>
-                        <div class="mini-value">{season_text}</div>
+                        <div class="mini-title">Over Probability</div>
+                        <div class="mini-value">{over_prob * 100:.1f}%</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
 
-            with subcol2:
-                last5_text = "N/A" if last5_avg is None else f"{last5_avg:.2f}"
+            with prob_col2:
                 st.markdown(
                     f"""
                     <div class="mini-card">
-                        <div class="mini-title">Last 5 Avg</div>
-                        <div class="mini-value">{last5_text}</div>
+                        <div class="mini-title">Under Probability</div>
+                        <div class="mini-value">{under_prob * 100:.1f}%</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
 
-            with subcol3:
+        if live_stats:
+            st.markdown("#### Live Game Status")
+
+            live_col1, live_col2, live_col3 = st.columns(3)
+
+            with live_col1:
                 st.markdown(
                     f"""
                     <div class="mini-card">
-                        <div class="mini-title">Sample Size</div>
-                        <div class="mini-value">{games_used}</div>
+                        <div class="mini-title">Current Points</div>
+                        <div class="mini-value">{safe_live_display(live_stats.get('points', 'N/A'))}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
+
+            with live_col2:
+                st.markdown(
+                    f"""
+                    <div class="mini-card">
+                        <div class="mini-title">Minutes</div>
+                        <div class="mini-value">{format_minutes(live_stats.get('minutes'))}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            with live_col3:
+                game_status = format_game_status_short(live_stats.get("game_status"), live_stats)
+                game_clock = format_game_clock(live_stats.get("game_clock"))
+
+                st.markdown(
+                    f"""
+                    <div class="mini-card">
+                        <div class="mini-title">Game</div>
+                        <div class="mini-value">{game_status} • {game_clock}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        subcol1, subcol2, subcol3 = st.columns(3)
+
+        with subcol1:
+            season_text = "N/A" if season_avg is None else f"{season_avg:.2f}"
+            st.markdown(
+                f"""
+                <div class="mini-card">
+                    <div class="mini-title">Season Avg</div>
+                    <div class="mini-value">{season_text}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with subcol2:
+            last5_text = "N/A" if last5_avg is None else f"{last5_avg:.2f}"
+            st.markdown(
+                f"""
+                <div class="mini-card">
+                    <div class="mini-title">Last 5 Avg</div>
+                    <div class="mini-value">{last5_text}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with subcol3:
+            st.markdown(
+                f"""
+                <div class="mini-card">
+                    <div class="mini-title">Sample Size</div>
+                    <div class="mini-value">{games_used}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
