@@ -371,18 +371,41 @@ def resolve_player_name(raw_name, normalized_to_actual):
 
 @cache_data(ttl=3600, show_spinner=False)
 def get_player_gamelog_df(player_id, season):
+    nba_headers = {
+        "Host": "stats.nba.com",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/140.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Origin": "https://www.nba.com",
+        "Referer": "https://www.nba.com/",
+        "Connection": "keep-alive",
+    }
+
     for attempt in range(2):
         try:
             return playergamelog.PlayerGameLog(
-                player_id=player_id,
-                season=season,
-                timeout=12
-            ).get_data_frames()[0]
+        player_id=player_id,
+        season=season,
+        headers=nba_headers,
+        timeout=30
+    ).get_data_frames()[0]
+
         except Exception as e:
+            print(
+                f"[PIPELINE] Gamelog attempt {attempt + 1} failed "
+                f"for player_id={player_id}: {type(e).__name__}: {e}",
+                flush=True
+            )
+
             if attempt == 1:
-                print(f"[PIPELINE] Gamelog failed for player_id={player_id}: {e}", flush=True)
                 return pd.DataFrame()
-            time.sleep(1.0)
+
+            time.sleep(2.0)
 
 
 def build_player_feature_row(df, player_name, sportsbook_line=None):
