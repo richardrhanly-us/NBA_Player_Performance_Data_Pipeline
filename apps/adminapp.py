@@ -4,6 +4,7 @@ import time
 import pandas as pd
 import streamlit as st
 from datetime import datetime
+from typing import Any, cast
 from zoneinfo import ZoneInfo
 from google.oauth2.service_account import Credentials
 import gspread
@@ -168,14 +169,14 @@ def ensure_admin_log_sheet():
     existing_values = ws.get_all_values()
     if not existing_values:
         ws.update(
-            "A1:E1",
             [[
                 "timestamp",
                 "action",
                 "source",
                 "status",
                 "details",
-            ]]
+            ]],
+            range_name="A1:E1",
         )
 
     return ws
@@ -188,7 +189,7 @@ def write_admin_log(action, source, status, details=""):
 
         ws.append_row(
             [timestamp, action, source, status, str(details)],
-            value_input_option="USER_ENTERED",
+            value_input_option=cast(Any, "USER_ENTERED"),
         )
     except Exception as e:
         st.warning(f"Could not write admin log: {e}")
@@ -507,9 +508,16 @@ def get_automation_health():
                 "LEFT JOIN prediction_outcomes o ON o.prediction_snapshot_id = s.id "
                 "WHERE o.id IS NULL AND s.prediction_status = 'ok'"
             )
-            pending_count = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM prediction_outcomes WHERE result_status != 'PENDING'")
-            settled_count = cur.fetchone()[0]
+        pending_row = cur.fetchone()
+        pending_count = pending_row[0] if pending_row is not None else 0
+
+        cur.execute(
+            "SELECT COUNT(*) FROM prediction_outcomes WHERE result_status != 'PENDING'"
+        )
+
+        settled_row = cur.fetchone()
+        settled_count = settled_row[0] if settled_row is not None else 0
+
     finally:
         conn.close()
 
@@ -715,12 +723,20 @@ with overview_tab:
             "Run scripts/apply_prediction_history_migrations.py."
         )
     else:
-        latest_run = automation_health.get("latest_run")
-        kill_switch_label = "ENABLED" if automation_health.get("automation_enabled") else "DISABLED (kill switch off)"
+        latest_run_raw = automation_health.get("latest_run")
+        latest_run = latest_run_raw if isinstance(latest_run_raw, dict) else None
+
+        kill_switch_label = (
+            "ENABLED"
+            if automation_health.get("automation_enabled")
+            else "DISABLED (kill switch off)"
+        )
+
         run_summary = (
             f"run #{latest_run['id']} · {latest_run['run_status']} · "
-            f"{latest_run['predictions_generated']} predictions · generated {latest_run['generated_at_utc']}"
-            if latest_run
+            f"{latest_run['predictions_generated']} predictions · generated "
+            f"{latest_run['generated_at_utc']}"
+            if latest_run is not None
             else "no run persisted yet"
         )
         st.markdown(
@@ -872,7 +888,10 @@ with operations_tab:
                     data = [output_df.columns.tolist()] + output_df.values.tolist()
     
                     top_sheet.clear()
-                    top_sheet.update("A1", data)
+                    top_sheet.update(
+                        data,
+                        range_name="A1",
+                    )
     
                     status_placeholder.success(
                         f"Top Plays Live rebuild complete: {len(output_df)} rows written."
@@ -1121,7 +1140,7 @@ with operations_tab:
                     if rows_to_append:
                         historical_ws.append_rows(
                             rows_to_append,
-                            value_input_option="USER_ENTERED"
+                            value_input_option=cast(Any, "USER_ENTERED"),
                         )
                         print(f"Historical Lines updated: {len(rows_to_append)} new rows")
                     else:
