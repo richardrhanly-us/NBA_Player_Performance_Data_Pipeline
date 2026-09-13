@@ -22,8 +22,8 @@ from src.shared_app import (
     build_player_feature_row,
     get_available_sportsbooks,
     get_live_player_stats,
+    get_player_details,
     get_player_gamelog_df,
-    get_player_info_df,
     get_player_points_lines,
     get_strong_plays_health,
     get_strong_plays_summary,
@@ -484,16 +484,14 @@ def get_top_play_visuals(player_name):
                 "secondary": "#60a5fa",
             }
 
-        player_info_df = get_player_info_df(player_id)
+        player_details = get_player_details(player_id)
 
         team_name = ""
         team_abbr = ""
 
-        if player_info_df is not None and not player_info_df.empty:
-            if "TEAM_NAME" in player_info_df.columns:
-                team_name = str(player_info_df.iloc[0].get("TEAM_NAME", "") or "")
-            if "TEAM_ABBREVIATION" in player_info_df.columns:
-                team_abbr = str(player_info_df.iloc[0].get("TEAM_ABBREVIATION", "") or "")
+        if player_details is not None:
+            team_name = str(player_details.team_name or "")
+            team_abbr = str(player_details.team_abbreviation or "")
 
         theme = get_team_theme(team_abbr)
 
@@ -1126,25 +1124,19 @@ def build_prediction(player_name, sportsbook_line):
         except Exception:
             team_info = None
 
-    player_info_df = None
+    player_details = None
     try:
-        player_info_df = get_player_info_df(player_id)
+        player_details = get_player_details(player_id)
     except Exception:
-        player_info_df = None
+        player_details = None
 
     team_name = None
     team_abbr = None
     position = None
-    if player_info_df is not None and not player_info_df.empty:
-        try:
-            if "TEAM_NAME" in player_info_df.columns:
-                team_name = player_info_df.iloc[0]["TEAM_NAME"]
-            if "TEAM_ABBREVIATION" in player_info_df.columns:
-                team_abbr = player_info_df.iloc[0]["TEAM_ABBREVIATION"]
-            if "POSITION" in player_info_df.columns:
-                position = player_info_df.iloc[0]["POSITION"]
-        except Exception:
-            pass
+    if player_details is not None:
+        team_name = player_details.team_name
+        team_abbr = player_details.team_abbreviation
+        position = player_details.position
 
     return {
         "actual_name": actual_name,

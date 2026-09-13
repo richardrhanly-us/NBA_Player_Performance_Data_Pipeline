@@ -8,13 +8,16 @@ payload into these objects; nothing downstream of a provider should need
 to know whether that payload came from nba_api, a licensed commercial
 feed, or anything else.
 
-Only two objects exist here because only two are justified by current
-repository usage -- training/data/collect_gamelogs.py (the sole current
-consumer of a provider) needs exactly: a roster entry to enumerate
-players, and one player's one-game box-score log. Do not add
+Step 6 added two objects, justified by training/data/collect_gamelogs.py
+(historical collection): a roster entry (Player) and one player's
+one-game box score (PlayerGameLog). Step 7 added four more, justified by
+src/shared_app.py's live prediction path: PlayerDetails (current team/
+position lookup), ScheduledGame (today's schedule), LivePlayerStatLine
+and LiveBoxScore (in-game stat line). Every field on every model here is
+something the application genuinely reads today -- do not add
 speculative fields/objects for capabilities (injuries, lineups,
-schedule, ...) the project does not yet consume -- see this package's
-__init__.py for the fuller rationale.
+projected minutes, ...) the project does not yet consume -- see this
+package's __init__.py for the fuller rationale.
 
 A NOTE ON player_id: it is deliberately typed and treated as an opaque
 identifier scoped to whichever provider produced it -- NOT assumed to be
@@ -37,6 +40,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -96,3 +100,74 @@ class PlayerGameLog:
     points: float | None
     plus_minus: float | None
     video_available: float | None
+
+
+@dataclass(frozen=True)
+class PlayerDetails:
+    """
+    Current-team/position lookup for one player -- exactly the 4 fields
+    src/shared_app.py's live path reads from nba_api's CommonPlayerInfo
+    (a payload with dozens of other columns nothing in this app uses).
+    team_id is used internally (to match a player to today's scheduled
+    game); team_name/team_abbreviation/position are display metadata.
+    """
+
+    player_id: int
+    team_id: int | None
+    team_name: str | None
+    team_abbreviation: str | None
+    position: str | None
+
+
+@dataclass(frozen=True)
+class ScheduledGame:
+    """
+    One game on a given date's schedule -- exactly the fields
+    src/shared_app.py's live path reads from nba_api's ScoreboardV2 game
+    header to find which game a team is playing today and whether it's
+    live. `game_date` is the same "%m/%d/%Y"-formatted string the app has
+    always used to request a schedule (see get_todays_scoreboard) --
+    preserved verbatim rather than parsed into a date object, since nothing
+    downstream needs more than the original string.
+    """
+
+    game_id: str
+    game_date: str
+    home_team_id: int | None
+    away_team_id: int | None
+    game_status_text: str | None
+
+
+@dataclass(frozen=True)
+class LivePlayerStatLine:
+    """
+    One player's row within a LiveBoxScore. `points`/`minutes` are kept
+    as `Any`, deliberately unconverted -- the live NBA payload's own
+    dynamic/inconsistent typing (points as int or str; minutes as an
+    ISO-8601-ish duration string) is exactly what
+    src/shared_app.py's existing post-processing
+    (parse_game_clock_to_minutes-style parsing, str()/float() coercions
+    at the point of use) already expects and handles; normalizing here
+    would risk silently changing that existing behavior.
+    """
+
+    player_id: int | None
+    first_name: str
+    last_name: str
+    points: Any
+    minutes: Any
+
+
+@dataclass(frozen=True)
+class LiveBoxScore:
+    """
+    One in-progress-or-final game's live box score -- exactly what
+    src/shared_app.py's get_live_player_stats reads from nba_api's live
+    BoxScore endpoint: the game clock/period, and every player's live
+    stat line (to find the one player being predicted for).
+    """
+
+    game_id: str
+    period: int | None
+    game_clock: str | None
+    players: tuple[LivePlayerStatLine, ...]

@@ -112,3 +112,97 @@ def dataframe_to_player_game_logs(df: pd.DataFrame) -> list[PlayerGameLog]:
             )
         )
     return records
+
+
+def player_game_logs_to_dataframe(records) -> pd.DataFrame:
+    """
+    The inverse of dataframe_to_player_game_logs(): builds a DataFrame
+    with the same uppercase, training.data.storage.RAW_GAMELOG_COLUMNS-
+    style column names, from a list of canonical PlayerGameLog records.
+
+    Deliberately simple -- a straightforward, deterministic column-by-
+    column reconstruction, preserving row order and every field's value
+    exactly as given. It does NOT deduplicate, drop rows, or sort (that
+    is training.data.storage's own persistence-schema concern --
+    training.data.storage.gamelogs_to_dataframe wraps this function and
+    then applies its own dedup/dropna/sort finalize step on top). Kept
+    here, with no dependency on training/, so src/shared_app.py's live
+    path can reuse it directly without needing anything from the
+    training package.
+    """
+    records = list(records)
+    columns = (
+        "SEASON",
+        "SEASON_ID",
+        "PLAYER_ID",
+        "PLAYER_NAME",
+        "GAME_ID",
+        "GAME_DATE",
+        "MATCHUP",
+        "TEAM_ABBREVIATION",
+        "OPPONENT_ABBREVIATION",
+        "IS_HOME",
+        "WL",
+        "MIN",
+        "FGM",
+        "FGA",
+        "FG_PCT",
+        "FG3M",
+        "FG3A",
+        "FG3_PCT",
+        "FTM",
+        "FTA",
+        "FT_PCT",
+        "OREB",
+        "DREB",
+        "REB",
+        "AST",
+        "STL",
+        "BLK",
+        "TOV",
+        "PF",
+        "PTS",
+        "PLUS_MINUS",
+        "VIDEO_AVAILABLE",
+    )
+    if not records:
+        return pd.DataFrame(columns=columns)
+
+    rows = [
+        {
+            "SEASON": r.season,
+            "SEASON_ID": r.season_id,
+            "PLAYER_ID": r.player_id,
+            "PLAYER_NAME": r.player_name,
+            "GAME_ID": r.game_id,
+            "GAME_DATE": r.game_date,
+            "MATCHUP": r.matchup,
+            "TEAM_ABBREVIATION": r.team_abbreviation,
+            "OPPONENT_ABBREVIATION": r.opponent_abbreviation,
+            "IS_HOME": r.is_home,
+            "WL": r.wl,
+            "MIN": r.minutes,
+            "FGM": r.fgm,
+            "FGA": r.fga,
+            "FG_PCT": r.fg_pct,
+            "FG3M": r.fg3m,
+            "FG3A": r.fg3a,
+            "FG3_PCT": r.fg3_pct,
+            "FTM": r.ftm,
+            "FTA": r.fta,
+            "FT_PCT": r.ft_pct,
+            "OREB": r.oreb,
+            "DREB": r.dreb,
+            "REB": r.reb,
+            "AST": r.ast,
+            "STL": r.stl,
+            "BLK": r.blk,
+            "TOV": r.tov,
+            "PF": r.pf,
+            "PTS": r.points,
+            "PLUS_MINUS": r.plus_minus,
+            "VIDEO_AVAILABLE": r.video_available,
+        }
+        for r in records
+    ]
+    return pd.DataFrame(rows, columns=columns)

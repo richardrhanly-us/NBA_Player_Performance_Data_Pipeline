@@ -1,17 +1,26 @@
+from __future__ import annotations
+
 import json
 import os
 import time
 import unicodedata
 from collections.abc import Callable
-from datetime import datetime
 from typing import Any
 
 import joblib
 import pandas as pd
 import requests
 import streamlit as st
-from nba_api.stats.endpoints import commonplayerinfo, playergamelog, scoreboardv2
-from nba_api.stats.static import players
+
+# Step 7: this module's basketball-data access (player search, player
+# metadata, recent gamelogs, today's schedule, live box score) goes
+# through the same provider boundary Step 6 introduced for historical
+# collection -- see src/data/basketball/__init__.py. No direct nba_api
+# import remains in this file; NBA-specific endpoint/response handling
+# lives entirely behind NBAApiProvider.
+from src.data.basketball.errors import ProviderError
+from src.data.basketball.normalization import player_game_logs_to_dataframe
+from src.data.basketball.provider import BasketballDataProvider, get_basketball_provider
 
 # Canonical feature-building implementation. shared_app re-exports this name
 # so existing callers (`from src.shared_app import build_player_feature_row`)
@@ -333,15 +342,16 @@ def load_model_stats():
         return json.load(f)
 
 @cache_data(ttl=3600)
-def load_active_players():
-    active_players = players.get_active_players()
+def load_active_players(_provider: BasketballDataProvider | None = None):
+    provider = _provider or get_basketball_provider()
+    active_players = provider.get_active_players()
 
     actual_name_to_id = {}
     normalized_to_actual = {}
 
     for p in active_players:
-        actual_name = str(p["full_name"]).strip()
-        player_id = p["id"]
+        actual_name = str(p.player_name).strip()
+        player_id = p.player_id
 
         actual_name_to_id[actual_name] = player_id
 
@@ -358,14 +368,12 @@ def load_active_players():
 
 
 @cache_data(ttl=3600)
-def get_player_info_df(player_id):
+def get_player_details(player_id, _provider: BasketballDataProvider | None = None):
+    provider = _provider or get_basketball_provider()
     try:
-        return commonplayerinfo.CommonPlayerInfo(
-            player_id=player_id,
-            timeout=12
-        ).get_data_frames()[0]
-    except Exception:
-        return pd.DataFrame()
+        return provider.get_player_details(player_id)
+    except ProviderError:
+        return None
 
 def resolve_player_name(raw_name, normalized_to_actual):
     normalized = normalize_name(raw_name)
@@ -392,144 +400,99 @@ def resolve_player_name(raw_name, normalized_to_actual):
     return None
 
 @cache_data(ttl=3600, show_spinner=False)
-def get_player_gamelog_df(player_id, season):
-    nba_headers = {
-        "Host": "stats.nba.com",
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/140.0.0.0 Safari/537.36"
-        ),
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Origin": "https://www.nba.com",
-        "Referer": "https://www.nba.com/",
-        "Connection": "keep-alive",
-    }
-
-    for attempt in range(2):
-        try:
-            return playergamelog.PlayerGameLog(
-        player_id=player_id,
-        season=season,
-        headers=nba_headers,
-        timeout=30
-    ).get_data_frames()[0]
-
-        except Exception as e:
-            print(
-                f"[PIPELINE] Gamelog attempt {attempt + 1} failed "
-                f"for player_id={player_id}: {type(e).__name__}: {e}",
-                flush=True
-            )
-
-            if attempt == 1:
-                return pd.DataFrame()
-
-            time.sleep(2.0)
+def get_player_gamelog_df(player_id, season, _provider: BasketballDataProvider | None = None):
+    # Pre-Step-7 this function retried the raw nba_api call itself (2
+    # attempts, a flat 2s sleep between them). That retry/backoff
+    # responsibility now lives inside the provider (NBAApiProvider ->
+    # training.data.nba_client.call_with_retries: 5 attempts, exponential
+    # backoff) -- a deliberate, disclosed change in *how long a total
+    # failure takes to surface*, not in what data/features/predictions
+    # result from a successful fetch. See the Step 7 report's cache/
+    # latency review.
+    provider = _provider or get_basketball_provider()
+    try:
+        records = provider.get_player_game_logs(player_id, season)
+        return player_game_logs_to_dataframe(records)
+    except ProviderError as e:
+        print(
+            f"[PIPELINE] Gamelog fetch failed for player_id={player_id}: "
+            f"{type(e).__name__}: {e}",
+            flush=True,
+        )
+        return pd.DataFrame()
 
 
 @cache_data(ttl=180)
-def get_scoreboard_for_date(game_date=None):
+def get_scoreboard_for_date(game_date=None, _provider: BasketballDataProvider | None = None):
+    """Returns list[ScheduledGame] for `game_date` (nba_api's own
+    "%m/%d/%Y" string; None uses the provider's own default -- see
+    NBAApiProvider.get_todays_scoreboard for exactly what that default
+    is and why it's preserved unchanged from before Step 7)."""
+    provider = _provider or get_basketball_provider()
     try:
-        if game_date is None:
-            game_date = datetime.now().strftime("%m/%d/%Y")
-        return scoreboardv2.ScoreboardV2(
-            game_date=game_date,
-            # nba_api's own default (DayOffset.default) is the string "0",
-            # not the int 0 -- matching it keeps behavior identical.
-            day_offset="0",
-            league_id="00",
-            timeout=12
-        ).get_data_frames()
-    except Exception:
+        return provider.get_todays_scoreboard(game_date)
+    except ProviderError:
         return []
 
 
-def get_live_player_stats(player_name):
-    try:
-        from nba_api.live.nba.endpoints import boxscore as live_boxscore
-    except Exception:
-        return None
+def get_live_player_stats(player_name, provider: BasketballDataProvider | None = None):
+    provider = provider or get_basketball_provider()
 
-    actual_name_to_id, normalized_to_actual = load_active_players()
+    actual_name_to_id, normalized_to_actual = load_active_players(_provider=provider)
     actual_name = normalized_to_actual.get(normalize_name(player_name), player_name)
     player_id = actual_name_to_id.get(actual_name)
     if not player_id:
         return None
 
-    info_df = get_player_info_df(player_id)
-    if info_df is None or info_df.empty:
+    player_details = get_player_details(player_id, _provider=provider)
+    if player_details is None or player_details.team_id is None:
         return None
-
-    try:
-        team_id = int(info_df.iloc[0]["TEAM_ID"])
-    except Exception:
-        return None
+    team_id = player_details.team_id
 
     try:
         eastern_now = pd.Timestamp.now(tz="US/Eastern")
         game_date = eastern_now.strftime("%m/%d/%Y")
-        board_frames = get_scoreboard_for_date(game_date)
+        games = get_scoreboard_for_date(game_date, _provider=provider)
     except Exception:
         return None
 
-    if not board_frames or len(board_frames) < 2:
+    team_game = next(
+        (g for g in games if g.home_team_id == team_id or g.away_team_id == team_id),
+        None,
+    )
+    if team_game is None:
         return None
+
+    game_id = team_game.game_id
+    game_status_text = str(team_game.game_status_text or "Live").strip()
 
     try:
-        game_header = board_frames[0]
-    except Exception:
-        return None
-
-    if game_header is None or game_header.empty:
-        return None
-
-    team_game = game_header[
-        (game_header["HOME_TEAM_ID"] == team_id) |
-        (game_header["VISITOR_TEAM_ID"] == team_id)
-    ]
-
-    if team_game.empty:
-        return None
-
-    game = team_game.iloc[0]
-    game_id = str(game["GAME_ID"])
-    game_status_text = str(game.get("GAME_STATUS_TEXT", "Live")).strip()
-
-    try:
-        live = live_boxscore.BoxScore(game_id=game_id)
-        data = live.get_dict()
-
-        players_live = []
-        players_live.extend(data.get("game", {}).get("homeTeam", {}).get("players", []))
-        players_live.extend(data.get("game", {}).get("awayTeam", {}).get("players", []))
+        box_score = provider.get_live_box_score(game_id)
+        if box_score is None:
+            return None
 
         matched = None
 
-        for p in players_live:
-            if str(p.get("personId", "")) == str(player_id):
-                matched = p
+        for line in box_score.players:
+            if str(line.player_id or "") == str(player_id):
+                matched = line
                 break
 
         if matched is None:
-            for p in players_live:
-                full_name = f"{p.get('firstName', '').strip()} {p.get('familyName', '').strip()}".strip()
+            for line in box_score.players:
+                full_name = f"{line.first_name} {line.last_name}".strip()
                 if full_name.lower() == actual_name.lower():
-                    matched = p
+                    matched = line
                     break
 
         if matched is None:
             return None
 
-        stats = matched.get("statistics", {})
-        points = stats.get("points", 0)
-        minutes = stats.get("minutes", "0")
+        points = matched.points
+        minutes = matched.minutes
 
-        game_data = data.get("game", {})
-        period = game_data.get("period")
-        game_clock = game_data.get("gameClock")
+        period = box_score.period
+        game_clock = box_score.game_clock
 
         clock_minutes = parse_game_clock_to_minutes(game_clock)
         game_minutes_remaining = compute_game_minutes_remaining(period, clock_minutes)

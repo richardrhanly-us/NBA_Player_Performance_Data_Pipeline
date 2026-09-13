@@ -196,56 +196,26 @@ def gamelogs_to_dataframe(records) -> pd.DataFrame:
     module has always persisted, from a list of
     src.data.basketball.models.PlayerGameLog records.
 
-    Passes through the same _finalize_gamelog_frame tail that
-    normalize_raw_gamelog uses, so persisted output is identical
+    Delegates the actual record->DataFrame reconstruction to
+    src.data.basketball.normalization.player_game_logs_to_dataframe (the
+    same provider-agnostic converter src/shared_app.py's live path uses),
+    then passes the result through the same _finalize_gamelog_frame tail
+    that normalize_raw_gamelog uses -- so persisted output is identical
     regardless of whether it came from the raw-nba_api path or the
-    provider/canonical-record path -- this is what makes the Step 6
+    provider/canonical-record path. This is what makes the Step 6
     provider refactor safe for the historical collector: this module
-    (storage.py) is the one place that owns RAW_GAMELOG_COLUMNS and both
-    directions of conversion to/from it.
+    (storage.py) is the one place that owns RAW_GAMELOG_COLUMNS and the
+    dedup/dropna/sort semantics of persisting to it; the record<->column
+    mapping itself lives in src/data/basketball/normalization.py so it
+    has no training/ dependency.
     """
+    from src.data.basketball.normalization import player_game_logs_to_dataframe
+
     records = list(records)
     if not records:
         return pd.DataFrame(columns=RAW_GAMELOG_COLUMNS)
 
-    rows = [
-        {
-            "SEASON": r.season,
-            "SEASON_ID": r.season_id,
-            "PLAYER_ID": r.player_id,
-            "PLAYER_NAME": r.player_name,
-            "GAME_ID": r.game_id,
-            "GAME_DATE": r.game_date,
-            "MATCHUP": r.matchup,
-            "TEAM_ABBREVIATION": r.team_abbreviation,
-            "OPPONENT_ABBREVIATION": r.opponent_abbreviation,
-            "IS_HOME": r.is_home,
-            "WL": r.wl,
-            "MIN": r.minutes,
-            "FGM": r.fgm,
-            "FGA": r.fga,
-            "FG_PCT": r.fg_pct,
-            "FG3M": r.fg3m,
-            "FG3A": r.fg3a,
-            "FG3_PCT": r.fg3_pct,
-            "FTM": r.ftm,
-            "FTA": r.fta,
-            "FT_PCT": r.ft_pct,
-            "OREB": r.oreb,
-            "DREB": r.dreb,
-            "REB": r.reb,
-            "AST": r.ast,
-            "STL": r.stl,
-            "BLK": r.blk,
-            "TOV": r.tov,
-            "PF": r.pf,
-            "PTS": r.points,
-            "PLUS_MINUS": r.plus_minus,
-            "VIDEO_AVAILABLE": r.video_available,
-        }
-        for r in records
-    ]
-    df = pd.DataFrame(rows)
+    df = player_game_logs_to_dataframe(records)
     return _finalize_gamelog_frame(df)
 
 
