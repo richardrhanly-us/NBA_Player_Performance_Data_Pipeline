@@ -1,0 +1,6 @@
+ablation_id,description,n_features,mean_cv_mae,std_cv_mae,mean_cv_rmse,mean_cv_bias
+E_minus_player_avg_pts_sq,Full V1 minus the single feature player_avg_pts_sq.,22,4.615458128446786,0.06972462286492126,6.029829557864063,-0.09057219387806535
+A_full_v1,Full V1 feature set (all 23 features) -- reference point.,23,4.617120817221806,0.06895570661869439,6.0324350291994575,-0.09440087759393118
+C_minus_schedule,Full V1 minus schedule_location (3 features removed).,20,4.620943791320215,0.06956932600818719,6.0363800892638295,-0.09996388678901451
+B_minus_opponent,Full V1 minus opponent_context (4 features removed).,19,4.625347889625986,0.0666976741598384,6.043357826329966,-0.06180519770227274
+D_minus_opponent_and_schedule_F_core_and_volume_only,"Full V1 minus opponent_context and schedule_location -- equivalent to core_scoring_history + volume_role only, since the four FEATURE_GROUPS exactly partition V1_FEATURE_NAMES.",16,4.631242606377406,0.06802957972855132,6.04981969429248,-0.058922885107078216

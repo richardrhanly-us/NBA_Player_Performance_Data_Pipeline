@@ -1,0 +1,192 @@
+{
+  "candidates_evaluated_on_official_validation": {
+    "best_hp_full_features": {
+      "params": {
+        "n_estimators": 400,
+        "max_depth": 10,
+        "min_samples_leaf": 20,
+        "min_samples_split": 10,
+        "max_features": "sqrt",
+        "random_state": 42,
+        "n_jobs": -1
+      },
+      "feature_names": [
+        "player_avg_pts",
+        "player_avg_pts_sq",
+        "season_minutes_avg",
+        "recent_minutes_avg",
+        "home_game",
+        "days_rest",
+        "is_back_to_back",
+        "last3_pts",
+        "last5_pts",
+        "last10_pts",
+        "last20_pts",
+        "last5_fga",
+        "last5_fta",
+        "last5_3pa",
+        "last5_minutes",
+        "last5_gmsc",
+        "last5_usage_proxy",
+        "minutes_volatility",
+        "points_volatility",
+        "opponent_points_allowed_per_game",
+        "opponent_points_allowed_last5",
+        "opponent_pace",
+        "opponent_defensive_rating"
+      ],
+      "metrics": {
+        "n": 13563,
+        "mae": 4.551828590189189,
+        "rmse": 5.927682068999206,
+        "r2": 0.5462827468141789,
+        "bias_mean_pred_minus_actual": 0.2744212604192408,
+        "actual_mean": 10.956278109562781,
+        "actual_std": 8.800194179718416,
+        "predicted_mean": 11.230699369982021,
+        "predicted_std": 6.599441069441803,
+        "residual_mean": 0.2744212604192408,
+        "residual_std": 5.921326513794407,
+        "residual_percentiles": {
+          "p5": -10.303017299357323,
+          "p25": -2.9980820436192683,
+          "p50": 0.924933660595979,
+          "p75": 4.023586876270358,
+          "p95": 8.884960092596678
+        },
+        "prediction_actual_correlation": 0.7398356928059795
+      }
+    },
+    "best_hp_best_ablation": {
+      "params": {
+        "n_estimators": 400,
+        "max_depth": 10,
+        "min_samples_leaf": 20,
+        "min_samples_split": 10,
+        "max_features": "sqrt",
+        "random_state": 42,
+        "n_jobs": -1
+      },
+      "feature_names": [
+        "player_avg_pts",
+        "season_minutes_avg",
+        "recent_minutes_avg",
+        "home_game",
+        "days_rest",
+        "is_back_to_back",
+        "last3_pts",
+        "last5_pts",
+        "last10_pts",
+        "last20_pts",
+        "last5_fga",
+        "last5_fta",
+        "last5_3pa",
+        "last5_minutes",
+        "last5_gmsc",
+        "last5_usage_proxy",
+        "minutes_volatility",
+        "points_volatility",
+        "opponent_points_allowed_per_game",
+        "opponent_points_allowed_last5",
+        "opponent_pace",
+        "opponent_defensive_rating"
+      ],
+      "metrics": {
+        "n": 13563,
+        "mae": 4.55298769120429,
+        "rmse": 5.927420729404465,
+        "r2": 0.5463227528967735,
+        "bias_mean_pred_minus_actual": 0.25393565338422336,
+        "actual_mean": 10.956278109562781,
+        "actual_std": 8.800194179718416,
+        "predicted_mean": 11.210213762947005,
+        "predicted_std": 6.5535064828232805,
+        "residual_mean": 0.25393565338422336,
+        "residual_std": 5.921978823612433,
+        "residual_percentiles": {
+          "p5": -10.355801403126229,
+          "p25": -3.0331686276131564,
+          "p50": 0.8964237100415495,
+          "p75": 4.0245117058938735,
+          "p95": 8.811709180035653
+        },
+        "prediction_actual_correlation": 0.7397163258529273
+      }
+    }
+  },
+  "final_candidate": "best_hp_full_features",
+  "paired_comparison": {
+    "step4_v1_rf": {
+      "n": 13563,
+      "mean_diff": 0.00023823565438792855,
+      "median_diff": 0.0014542558249175386,
+      "fraction_candidate_wins": 0.49413846494138464,
+      "fraction_ties": 0.0,
+      "fraction_candidate_loses": 0.5058615350586153,
+      "bootstrap_ci": {
+        "point_estimate_mae_diff": 0.00023823565438792855,
+        "ci_lower": -0.002643490121120388,
+        "ci_upper": 0.003255086051800502,
+        "confidence": 0.95,
+        "n_bootstrap": 5000,
+        "seed": 42,
+        "ci_excludes_zero": false
+      },
+      "rows_with_missing_baseline_excluded": 0
+    },
+    "player_avg_pts": {
+      "n": 13563,
+      "mean_diff": -0.006602926209075977,
+      "median_diff": 0.02192365909376548,
+      "fraction_candidate_wins": 0.49148418491484186,
+      "fraction_ties": 0.0,
+      "fraction_candidate_loses": 0.5085158150851582,
+      "bootstrap_ci": {
+        "point_estimate_mae_diff": -0.006602926209075977,
+        "ci_lower": -0.026338911366167984,
+        "ci_upper": 0.013778910153066906,
+        "confidence": 0.95,
+        "n_bootstrap": 5000,
+        "seed": 42,
+        "ci_excludes_zero": false
+      },
+      "rows_with_missing_baseline_excluded": 0
+    },
+    "last5_pts": {
+      "n": 13563,
+      "mean_diff": -0.19510055528010198,
+      "median_diff": -0.1444668738306678,
+      "fraction_candidate_wins": 0.5387451153874512,
+      "fraction_ties": 0.0,
+      "fraction_candidate_loses": 0.4612548846125488,
+      "bootstrap_ci": {
+        "point_estimate_mae_diff": -0.19510055528010198,
+        "ci_lower": -0.22321017589150788,
+        "ci_upper": -0.16626709288729083,
+        "confidence": 0.95,
+        "n_bootstrap": 5000,
+        "seed": 42,
+        "ci_excludes_zero": true
+      },
+      "rows_with_missing_baseline_excluded": 0
+    },
+    "last10_pts": {
+      "n": 11277,
+      "mean_diff": -0.038789270579015885,
+      "median_diff": 0.003874598864454626,
+      "fraction_candidate_wins": 0.4987141970382194,
+      "fraction_ties": 0.0,
+      "fraction_candidate_loses": 0.5012858029617806,
+      "bootstrap_ci": {
+        "point_estimate_mae_diff": -0.038789270579015885,
+        "ci_lower": -0.06202916799722461,
+        "ci_upper": -0.014251887265972516,
+        "confidence": 0.95,
+        "n_bootstrap": 5000,
+        "seed": 42,
+        "ci_excludes_zero": true
+      },
+      "rows_with_missing_baseline_excluded": 2286
+    }
+  }
+}

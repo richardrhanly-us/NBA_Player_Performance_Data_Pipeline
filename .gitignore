@@ -36,3 +36,14 @@ models/registry/*/residuals.parquet
 # training.train` locally to (re)create both the version directory and
 # this pointer together.
 models/registry/CURRENT_V1
+
+# Step 5 experiment outputs (training/experiments/results/<run_id>/,
+# development-only, entirely separate from models/registry/ above and
+# never read by any production code path). The only large binary is the
+# final selected candidate's model, persisted at most once per run for
+# convenience -- gitignored for the same reason as model.pkl above.
+# search_results/ablation_results/validation_comparison/
+# experiment_metadata are small JSON/CSV and deliberately committed so a
+# run's search space, ablation results, and selected configuration stay
+# reviewable in git history.
+training/experiments/results/*/selected_candidate_model.pkl
