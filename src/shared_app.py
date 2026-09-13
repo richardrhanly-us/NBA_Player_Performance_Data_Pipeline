@@ -202,6 +202,108 @@ def compute_game_minutes_remaining(period, game_clock_minutes):
     return (5.0 * overtime_periods_left) + game_clock_minutes
 
 
+def parse_minutes_to_float(minutes_value):
+    """
+    Moved here from apps/publicapp.py (Step 8) so
+    get_live_adjusted_projection below -- and, via it, the new
+    src/services/prediction_service.py -- can reuse it without importing
+    a Streamlit app module. Behavior is unchanged: publicapp.py now
+    imports this name from here instead of defining it locally.
+    """
+    if minutes_value is None:
+        return None
+
+    text = str(minutes_value).strip()
+    if not text:
+        return None
+
+    try:
+        if ":" in text:
+            parts = text.split(":")
+            if len(parts) == 2:
+                mins = float(parts[0])
+                secs = float(parts[1])
+                return mins + (secs / 60.0)
+
+        text = text.replace("PT", "")
+
+        mins = 0.0
+        secs = 0.0
+
+        if "M" in text:
+            m_part = text.split("M")[0]
+            mins = float(m_part) if m_part else 0.0
+            text = text.split("M")[1]
+
+        if "S" in text:
+            s_part = text.replace("S", "")
+            secs = float(s_part) if s_part else 0.0
+
+        return mins + (secs / 60.0)
+    except Exception:
+        return None
+
+
+def get_live_adjusted_projection(predicted_points, live_stats):
+    """
+    Moved here from apps/publicapp.py (Step 8), unchanged, so the new
+    single-player prediction service (src/services/prediction_service.py)
+    can produce the exact same live-adjusted number the existing UI does,
+    instead of duplicating this math. publicapp.py now imports this name
+    from here instead of defining it locally.
+    """
+    if not live_stats:
+        return predicted_points
+
+    current_points = live_stats.get("points")
+    minutes_played = parse_minutes_to_float(live_stats.get("minutes"))
+    game_minutes_remaining = live_stats.get("game_minutes_remaining")
+
+    try:
+        current_points = float(current_points)
+    except Exception:
+        return predicted_points
+
+    try:
+        game_minutes_remaining = float(game_minutes_remaining)
+    except Exception:
+        game_minutes_remaining = None
+
+    if game_minutes_remaining is None:
+        return predicted_points
+
+    if game_minutes_remaining <= 0:
+        return current_points
+
+    if minutes_played is None or minutes_played <= 0:
+        return max(predicted_points, current_points)
+
+    pregame_points_per_min = predicted_points / 48.0
+    live_points_per_min = current_points / minutes_played
+
+    live_weight = min(max(minutes_played / 24.0, 0.25), 0.75)
+    pregame_weight = 1.0 - live_weight
+
+    blended_points_per_min = (
+        (pregame_points_per_min * pregame_weight) +
+        (live_points_per_min * live_weight)
+    )
+
+    adjusted_projection = current_points + (blended_points_per_min * game_minutes_remaining)
+    adjusted_projection = max(adjusted_projection, current_points)
+
+    if game_minutes_remaining <= 0.25:
+        return current_points
+    if game_minutes_remaining <= 1.0:
+        return min(adjusted_projection, current_points + 0.75)
+    if game_minutes_remaining <= 2.0:
+        return min(adjusted_projection, current_points + 1.5)
+    if game_minutes_remaining <= 4.0:
+        return min(adjusted_projection, current_points + 3.0)
+
+    return adjusted_projection
+
+
 def format_sportsbook_name(book_name):
     text = str(book_name or "").strip()
     lower = text.lower()
@@ -635,10 +737,15 @@ def get_available_sportsbooks():
     ]
 
 
-@cache_data(ttl=300, show_spinner=False)
-def get_player_points_lines(player_name, bookmaker_key):
+def get_odds_api_key():
+    """
+    Extracted from get_player_points_lines (Step 8) so the new daily
+    prediction board (src/services/prediction_service.py) can resolve
+    the same odds API key the same way, without duplicating this
+    lookup. Behavior unchanged: Streamlit secrets first, then the
+    ODDS_API_KEY environment variable, else None.
+    """
     api_key = None
-
     try:
         if "ODDS_API_KEY" in st.secrets:
             api_key = st.secrets["ODDS_API_KEY"]
@@ -648,6 +755,12 @@ def get_player_points_lines(player_name, bookmaker_key):
     if not api_key:
         api_key = os.environ.get("ODDS_API_KEY")
 
+    return api_key
+
+
+@cache_data(ttl=300, show_spinner=False)
+def get_player_points_lines(player_name, bookmaker_key):
+    api_key = get_odds_api_key()
     if not api_key:
         return None
 

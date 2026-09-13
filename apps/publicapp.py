@@ -16,12 +16,17 @@ from streamlit_autorefresh import st_autorefresh
 
 
 
+from src.services.prediction_result import PredictionStatus
+from src.services.prediction_service import build_daily_prediction_board, predict_player
 from src.shared_app import (
     APP_VERSION,
+    BOOKMAKER_KEY,
     CURRENT_SEASON,
-    build_player_feature_row,
+    EDGE_THRESHOLD,
     get_available_sportsbooks,
+    get_live_adjusted_projection,
     get_live_player_stats,
+    get_odds_api_key,
     get_player_details,
     get_player_gamelog_df,
     get_player_points_lines,
@@ -558,92 +563,11 @@ def format_minutes(minutes_str):
         return str(minutes_str)
 
 
-def parse_minutes_to_float(minutes_value):
-    if minutes_value is None:
-        return None
-
-    text = str(minutes_value).strip()
-    if not text:
-        return None
-
-    try:
-        if ":" in text:
-            parts = text.split(":")
-            if len(parts) == 2:
-                mins = float(parts[0])
-                secs = float(parts[1])
-                return mins + (secs / 60.0)
-
-        text = text.replace("PT", "")
-
-        mins = 0.0
-        secs = 0.0
-
-        if "M" in text:
-            m_part = text.split("M")[0]
-            mins = float(m_part) if m_part else 0.0
-            text = text.split("M")[1]
-
-        if "S" in text:
-            s_part = text.replace("S", "")
-            secs = float(s_part) if s_part else 0.0
-
-        return mins + (secs / 60.0)
-    except Exception:
-        return None
-
-
-def get_live_adjusted_projection(predicted_points, live_stats):
-    if not live_stats:
-        return predicted_points
-
-    current_points = live_stats.get("points")
-    minutes_played = parse_minutes_to_float(live_stats.get("minutes"))
-    game_minutes_remaining = live_stats.get("game_minutes_remaining")
-
-    try:
-        current_points = float(current_points)
-    except Exception:
-        return predicted_points
-
-    try:
-        game_minutes_remaining = float(game_minutes_remaining)
-    except Exception:
-        game_minutes_remaining = None
-
-    if game_minutes_remaining is None:
-        return predicted_points
-
-    if game_minutes_remaining <= 0:
-        return current_points
-
-    if minutes_played is None or minutes_played <= 0:
-        return max(predicted_points, current_points)
-
-    pregame_points_per_min = predicted_points / 48.0
-    live_points_per_min = current_points / minutes_played
-
-    live_weight = min(max(minutes_played / 24.0, 0.25), 0.75)
-    pregame_weight = 1.0 - live_weight
-
-    blended_points_per_min = (
-        (pregame_points_per_min * pregame_weight) +
-        (live_points_per_min * live_weight)
-    )
-
-    adjusted_projection = current_points + (blended_points_per_min * game_minutes_remaining)
-    adjusted_projection = max(adjusted_projection, current_points)
-
-    if game_minutes_remaining <= 0.25:
-        return current_points
-    if game_minutes_remaining <= 1.0:
-        return min(adjusted_projection, current_points + 0.75)
-    if game_minutes_remaining <= 2.0:
-        return min(adjusted_projection, current_points + 1.5)
-    if game_minutes_remaining <= 4.0:
-        return min(adjusted_projection, current_points + 3.0)
-
-    return adjusted_projection
+# parse_minutes_to_float / get_live_adjusted_projection moved to
+# src/shared_app.py in Step 8 (pure functions, no Streamlit dependency)
+# so the new single-player prediction service can reuse them without
+# importing this Streamlit app module. Imported below instead of
+# defined locally -- behavior unchanged.
 
 
 def format_game_clock(clock_value):
@@ -1043,42 +967,60 @@ def get_player_lookup():
     return actual_name_to_id, player_names
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def get_daily_prediction_board_cached(bookmaker_key):
+    """
+    Step 8: today's full points-prop board, computed fresh from
+    BasketballDataProvider + the existing sportsbook odds feed (see
+    src/services/prediction_service.py::build_daily_prediction_board).
+
+    ttl=300 matches the existing sportsbook-line-facing caches in this
+    file (get_player_points_lines, get_today_games) -- sportsbook lines
+    are the most time-sensitive input the board depends on, so this
+    freshness window is chosen to match them, not chosen independently.
+    Returns None if no odds API key is configured (distinct from an
+    empty board, which means the key works but there are no props/games
+    today).
+    """
+    api_key = get_odds_api_key()
+    if not api_key:
+        return None
+    return build_daily_prediction_board(api_key=api_key, bookmaker_key=bookmaker_key)
+
+
 @st.cache_data(ttl=60)
 def build_prediction(player_name, sportsbook_line):
+    # Step 8: the "resolve player -> recent gamelog -> legacy feature row
+    # -> model.predict" core is now delegated to
+    # src.services.prediction_service.predict_player (the same function
+    # the new daily board uses) instead of being duplicated here.
+    # apply_live_adjustment=False on purpose: this call only supplies the
+    # PRE-live-adjustment number (base_predicted_points); live adjustment
+    # is still applied below exactly as before (one get_live_player_stats
+    # call, one get_live_adjusted_projection call -- unchanged), so this
+    # refactor makes zero difference to the number of external calls this
+    # function makes.
     model = load_model()
     model_stats = load_model_stats()
-    actual_name_to_id, normalized_to_actual = load_active_players()
 
-    normalized = normalize_name(player_name)
-    actual_name = normalized_to_actual.get(normalized, player_name)
-    player_id = actual_name_to_id.get(actual_name)
+    base_result = predict_player(
+        player_name,
+        sportsbook_line=sportsbook_line,
+        model=model,
+        apply_live_adjustment=False,
+    )
 
-    if not player_id:
+    if base_result.status == PredictionStatus.UNMATCHED:
         return {"error": "Player ID not found."}
+    if base_result.status == PredictionStatus.MISSING_HISTORY:
+        return {"error": base_result.reason}
+    if base_result.status in (PredictionStatus.ERROR, PredictionStatus.MODEL_UNAVAILABLE, PredictionStatus.PROVIDER_UNAVAILABLE):
+        return {"error": base_result.reason or "Prediction unavailable."}
 
-    gamelog_df = get_player_gamelog_df(player_id, CURRENT_SEASON)
-    if gamelog_df is None or gamelog_df.empty:
-        return {"error": "Player gamelog unavailable."}
-
-    X = build_player_feature_row(gamelog_df, actual_name, sportsbook_line)
-    if X is None or X.empty:
-        return {"error": "Not enough games to build features."}
-    
-    model_feature_names = list(getattr(model, "feature_names_in_", []))
-    
-    if model_feature_names:
-        missing_features = [col for col in model_feature_names if col not in X.columns]
-        extra_features = [col for col in X.columns if col not in model_feature_names]
-    
-        if missing_features:
-            return {"error": f"Model feature mismatch. Missing: {', '.join(missing_features)}"}
-    
-        X = X.reindex(columns=model_feature_names)
-
-        
-
-    predicted_points = float(model.predict(X)[0])
-    base_predicted_points = predicted_points
+    actual_name = base_result.player_name
+    player_id = base_result.player_id
+    base_predicted_points = base_result.model_projection
+    predicted_points = base_predicted_points
 
     points_std = None
     if isinstance(model_stats, dict):
@@ -1086,15 +1028,18 @@ def build_prediction(player_name, sportsbook_line):
 
     season_avg = None
     last5_avg = None
-    games_used = len(gamelog_df)
+    games_used = 0
 
-    try:
-        gamelog_df = gamelog_df.copy()
-        gamelog_df["PTS"] = pd.to_numeric(gamelog_df["PTS"], errors="coerce")
-        season_avg = float(gamelog_df["PTS"].mean())
-        last5_avg = float(gamelog_df["PTS"].tail(5).mean())
-    except Exception:
-        pass
+    gamelog_df = get_player_gamelog_df(player_id, CURRENT_SEASON)
+    if gamelog_df is not None and not gamelog_df.empty:
+        games_used = len(gamelog_df)
+        try:
+            gamelog_df = gamelog_df.copy()
+            gamelog_df["PTS"] = pd.to_numeric(gamelog_df["PTS"], errors="coerce")
+            season_avg = float(gamelog_df["PTS"].mean())
+            last5_avg = float(gamelog_df["PTS"].tail(5).mean())
+        except Exception:
+            pass
 
     live_stats = None
     try:
@@ -1416,6 +1361,92 @@ if SHOW_LIVE_FEATURES:
         st.info(f"Top plays are temporarily unavailable: {e}")
 
     st.markdown("</div>", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# Step 8: Today's Edge Board -- a freshly-computed (not prebuilt-from-sheet)
+# board across today's full points-prop market, via
+# src/services/prediction_service.py::build_daily_prediction_board.
+# Pregame projections only (see that module's docstring for why); every
+# discovered prop is shown, qualified edges are flagged (not filtered), and
+# unavailable/unmatched players are reported rather than silently dropped.
+# ---------------------------------------------------------------------------
+st.markdown(
+    '<div class="section-card"><div class="section-title">Today\'s Edge Board</div>',
+    unsafe_allow_html=True,
+)
+try:
+    if not get_odds_api_key():
+        st.info("Edge board unavailable: no odds data source is configured right now.")
+    else:
+        board = get_daily_prediction_board_cached(BOOKMAKER_KEY)
+
+        if board is None or not board.predictions:
+            st.info("No player-points props are available right now.")
+        else:
+            st.caption(
+                f"{board.props_discovered} props discovered · "
+                f"{board.predictions_generated} predictions generated · "
+                f"{board.unmatched_count} unmatched · "
+                f"{board.unavailable_count} unavailable · "
+                f"pregame projections only · model {board.model_version} · "
+                f"generated {board.generated_at_utc}"
+            )
+
+            ok_predictions = [r for r in board.predictions if r.status == PredictionStatus.OK]
+            other_predictions = [r for r in board.predictions if r.status != PredictionStatus.OK]
+
+            if not ok_predictions:
+                st.info("No predictions could be generated for today's props.")
+            else:
+                board_rows = [
+                    {
+                        "Player": r.player_name,
+                        "Matchup": r.matchup or "—",
+                        "Model Projection": r.model_projection,
+                        "Line": r.sportsbook_line,
+                        "Edge": r.edge,
+                        "Lean": r.direction.value if r.direction is not None else "—",
+                        "Sportsbook": r.bookmaker or "—",
+                        "Qualified": (
+                            "Yes"
+                            if r.edge is not None and abs(r.edge) >= EDGE_THRESHOLD
+                            else ""
+                        ),
+                    }
+                    for r in ok_predictions
+                ]
+                board_df = pd.DataFrame(board_rows)
+
+                def _edge_row_color(row):
+                    if row.get("Qualified") == "Yes":
+                        return ["background-color: rgba(34,197,94,0.35);"] * len(row)
+                    return [""] * len(row)
+
+                styled_board_df = (
+                    board_df.style.apply(_edge_row_color, axis=1)
+                    .format(
+                        {
+                            "Model Projection": "{:.2f}",
+                            "Line": "{:.1f}",
+                            "Edge": "{:+.2f}",
+                        }
+                    )
+                )
+                st.dataframe(styled_board_df, use_container_width=True, hide_index=True)
+                st.caption(
+                    f"Highlighted rows meet the current qualified-edge threshold "
+                    f"(±{EDGE_THRESHOLD:.1f}). This is an analytical projection, "
+                    "not a guarantee."
+                )
+
+            if other_predictions:
+                with st.expander(f"{len(other_predictions)} player(s) unavailable today"):
+                    for r in other_predictions:
+                        st.caption(f"{r.player_name}: {r.reason or r.status.value}")
+except Exception as e:
+    st.info(f"Edge board is temporarily unavailable: {e}")
+
+st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown(
     '<div class="section-card"><div class="section-title">Player Projection</div>',

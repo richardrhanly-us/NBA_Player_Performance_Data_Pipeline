@@ -20,6 +20,11 @@ MIGRATED_RUNTIME_MODULES = (
     "src/shared_app.py",
     "apps/publicapp.py",
     "apps/adminapp.py",
+    # Step 8: the new prediction service layer must hold to the same
+    # provider-boundary guard as the app modules it serves.
+    "src/services/prediction_service.py",
+    "src/services/prediction_result.py",
+    "src/services/persistence.py",
 )
 
 ALLOWED_NBA_API_LOCATIONS = (

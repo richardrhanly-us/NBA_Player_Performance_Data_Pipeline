@@ -170,4 +170,14 @@ def test_legacy_model_prediction_parity_between_old_and_new_paths():
 
     assert len(old_X) == len(new_X) == 1  # build_player_feature_row returns one row
     assert max_abs_feature_diff == 0.0
-    assert max_abs_prediction_diff == 0.0
+    # Machine-precision tolerance, not exact 0.0: this model has n_jobs=-1
+    # (verified: repeated model.predict() calls on the SAME input are
+    # bit-identical, so the model itself is deterministic), but two
+    # independently-constructed pandas DataFrames feeding the same
+    # feature values through joblib's parallel per-tree reduction can
+    # legitimately land on a different, still mathematically valid,
+    # floating-point summation order -- observed magnitude ~1e-14, ~13
+    # orders of magnitude below any prediction this model produces.
+    # Asserting exact equality here was flaky (intermittently ~1e-15
+    # off); 1e-6 is generously tight while eliminating that flake.
+    assert max_abs_prediction_diff < 1e-6

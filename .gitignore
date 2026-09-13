@@ -47,3 +47,11 @@ models/registry/CURRENT_V1
 # run's search space, ablation results, and selected configuration stay
 # reviewable in git history.
 training/experiments/results/*/selected_candidate_model.pkl
+
+# Step 8: local-only prediction board snapshots
+# (src/services/persistence.py::save_board_snapshot). NOT the
+# recommended production persistence shape (see that module's
+# docstring for the prediction_runs/prediction_snapshots design) -- just
+# a throwaway local artifact used to prove the board end-to-end. Never
+# read by any app code.
+data/prediction_snapshots/
