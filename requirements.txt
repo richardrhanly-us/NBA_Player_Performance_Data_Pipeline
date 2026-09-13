@@ -11,3 +11,4 @@ google-auth
 requests
 streamlit-autorefresh
 oauth2client
+pytest

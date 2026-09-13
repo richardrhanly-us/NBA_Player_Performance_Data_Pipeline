@@ -51,7 +51,7 @@ jobs:
       - name: Compile Python files
         shell: bash
         run: |
-          python -m compileall -q apps scripts src
+          python -m compileall -q apps scripts src tests
 
       - name: Verify important imports
         shell: bash
@@ -59,6 +59,11 @@ jobs:
           python -c "import pandas"
           python -c "import streamlit"
           python -c "import sklearn"
+
+      - name: Run tests
+        shell: bash
+        run: |
+          python -m pytest tests -v
 
       - name: Create workflow summary
         if: always()
@@ -68,7 +73,8 @@ jobs:
             echo "## Python Code Check"
             echo
             echo "- **Python version:** 3.11"
-            echo "- **Syntax validation:** apps, scripts, and src"
+            echo "- **Syntax validation:** apps, scripts, src, and tests"
             echo "- **Dependency installation:** requirements.txt"
+            echo "- **Tests:** pytest tests/"
             echo "- **Result:** ${{ job.status }}"
           } >> "${GITHUB_STEP_SUMMARY}"

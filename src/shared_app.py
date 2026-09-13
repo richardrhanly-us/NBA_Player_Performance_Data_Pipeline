@@ -1,41 +1,55 @@
-import os
 import json
+import os
 import time
-import requests
+import unicodedata
+from collections.abc import Callable
+from datetime import datetime
+from typing import Any
+
 import joblib
 import pandas as pd
-import unicodedata
+import requests
 import streamlit as st
-
-from datetime import datetime
+from nba_api.stats.endpoints import commonplayerinfo, playergamelog, scoreboardv2
 from nba_api.stats.static import players
-from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv2
 
-from src.sheets_utils import (
-    SHEET_KEY,
-    RESULTS_SHEET_NAME,
-    STRONG_PLAYS_SHEET_NAME,
-    HISTORICAL_LINES_SHEET_NAME,
-    clear_app_caches,
-    get_gsheet_client,
-    get_worksheet,
-    get_historical_lines_sheet,
-    get_strong_plays_sheet,
-    get_results_sheet,
-    get_worksheet_with_df,
-    column_letter_from_index,
-    build_header_index_map,
-)
-
+# Canonical feature-building implementation. shared_app re-exports this name
+# so existing callers (`from src.shared_app import build_player_feature_row`)
+# keep working unchanged; the actual logic lives in src/features/ so it can
+# be shared with a future training pipeline without duplication.
+from src.features.build_features import build_player_feature_row
 from src.results_pipeline import (
-    normalize_sheet_date,
     get_final_points_from_gamelog as results_pipeline_get_final_points_from_gamelog,
-    is_blank_cell,
-    is_pending_result_row,
-    update_sheet_with_final_result,
-    populate_closing_lines_and_clv,
+)
+from src.results_pipeline import (
     update_all_pending_sheet_results as results_pipeline_update_all_pending_sheet_results,
 )
+
+# get_results_sheet / get_strong_plays_sheet are used directly below.
+# SHEET_KEY, get_gsheet_client, and get_historical_lines_sheet are not used
+# in this module -- they are imported solely so that
+# `from src.shared_app import ...` / `shared_app.<name>` keeps working for
+# existing callers (scripts/top_plays_rebuild.py, apps/adminapp.py,
+# scripts/pregame_pipeline.py). __all__ below marks that re-export as
+# deliberate for static analysis instead of silently deleting it.
+from src.sheets_utils import (
+    SHEET_KEY,
+    get_gsheet_client,
+    get_historical_lines_sheet,
+    get_results_sheet,
+    get_strong_plays_sheet,
+)
+
+# Names imported above but not referenced in this module's own code, kept
+# solely as compatibility re-exports for existing external callers. Listing
+# them here is what tells static analysis (Ruff F401, Pylance) that this is
+# deliberate rather than dead code -- do not remove a name from this list
+# without first confirming nothing still imports it from shared_app.
+__all__ = [
+    "SHEET_KEY",
+    "get_gsheet_client",
+    "get_historical_lines_sheet",
+]
 
 CURRENT_SEASON = "2025-26"
 APP_VERSION = "v1.2"
@@ -43,17 +57,25 @@ BOOKMAKER_KEY = "draftkings"
 EDGE_THRESHOLD = 3.0
 IS_STREAMLIT = "STREAMLIT_SERVER_RUNNING" in os.environ
 
-if IS_STREAMLIT:
-    cache_data = st.cache_data
-    cache_resource = st.cache_resource
-else:
-    def cache_data(**kwargs):
-        def wrapper(func):
-            return func
-        return wrapper
-
-    def cache_resource(func):
+def _noop_cache_data(**kwargs):
+    def wrapper(func):
         return func
+    return wrapper
+
+
+def _noop_cache_resource(func):
+    return func
+
+
+# st.cache_data / st.cache_resource are Streamlit's CacheDataAPI /
+# CacheResourceAPI objects, which pyright can't unify with a `def`
+# fallback of the same name under one inferred type (that pattern trips
+# reportRedeclaration). Both are genuinely just callables used as
+# decorators/decorator factories, so binding each name once via a ternary,
+# with an explicit Callable[..., Any] annotation, is the accurate (not
+# merely permissive) type -- and avoids the two-declaration conflict.
+cache_data: Callable[..., Any] = st.cache_data if IS_STREAMLIT else _noop_cache_data
+cache_resource: Callable[..., Any] = st.cache_resource if IS_STREAMLIT else _noop_cache_resource
 
 def get_final_points_from_gamelog(player_name, game_date):
     return results_pipeline_get_final_points_from_gamelog(
@@ -408,174 +430,6 @@ def get_player_gamelog_df(player_id, season):
             time.sleep(2.0)
 
 
-def build_player_feature_row(df, player_name, sportsbook_line=None):
-    def _parse_minutes_value(val):
-        if pd.isna(val):
-            return None
-
-        text = str(val).strip()
-        if not text:
-            return None
-
-        try:
-            if ":" in text:
-                parts = text.split(":")
-                if len(parts) == 2:
-                    mins = float(parts[0])
-                    secs = float(parts[1])
-                    return mins + (secs / 60.0)
-
-            if text.startswith("PT"):
-                text = text.replace("PT", "")
-                mins = 0.0
-                secs = 0.0
-
-                if "M" in text:
-                    m_part = text.split("M")[0]
-                    mins = float(m_part) if m_part else 0.0
-                    text = text.split("M")[1]
-
-                if "S" in text:
-                    s_part = text.replace("S", "")
-                    secs = float(s_part) if s_part else 0.0
-
-                return mins + (secs / 60.0)
-
-            return float(text)
-        except Exception:
-            return None
-
-    df = df.copy()
-    if df.empty:
-        return None
-
-    df["PLAYER_NAME"] = player_name
-    df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"], errors="coerce")
-    df = df.dropna(subset=["GAME_DATE"]).sort_values("GAME_DATE").reset_index(drop=True)
-    if df.empty:
-        return None
-
-    numeric_cols = [
-        "PTS", "FGM", "FGA", "FTA", "FTM", "OREB", "DREB",
-        "STL", "AST", "BLK", "PF", "TOV"
-    ]
-    for col in numeric_cols:
-        if col not in df.columns:
-            df[col] = pd.NA
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    if "MIN" not in df.columns:
-        df["MIN"] = pd.NA
-    df["MIN"] = df["MIN"].apply(_parse_minutes_value)
-
-    if "FG3A" in df.columns:
-        df["FG3A"] = pd.to_numeric(df["FG3A"], errors="coerce")
-    else:
-        df["FG3A"] = pd.NA
-
-    if "MATCHUP" not in df.columns:
-        df["MATCHUP"] = ""
-
-    df["gmsc"] = (
-        df["PTS"]
-        + 0.4 * df["FGM"]
-        - 0.7 * df["FGA"]
-        - 0.4 * (df["FTA"] - df["FTM"])
-        + 0.7 * df["OREB"]
-        + 0.3 * df["DREB"]
-        + df["STL"]
-        + 0.7 * df["AST"]
-        + 0.7 * df["BLK"]
-        - 0.4 * df["PF"]
-        - df["TOV"]
-    )
-
-    grouped = df.groupby("PLAYER_NAME")
-
-    df["player_avg_pts"] = grouped["PTS"].transform(lambda x: x.shift(1).expanding().mean())
-    df["player_avg_pts_sq"] = df["player_avg_pts"] ** 2
-    df["last3_pts"] = grouped["PTS"].transform(lambda x: x.shift(1).rolling(3).mean())
-    df["last5_pts"] = grouped["PTS"].transform(lambda x: x.shift(1).rolling(5).mean())
-    df["last10_pts"] = grouped["PTS"].transform(lambda x: x.shift(1).rolling(10).mean())
-    df["last20_pts"] = grouped["PTS"].transform(lambda x: x.shift(1).rolling(20).mean())
-    df["last5_fga"] = grouped["FGA"].transform(lambda x: x.shift(1).rolling(5).mean())
-    df["last5_fta"] = grouped["FTA"].transform(lambda x: x.shift(1).rolling(5).mean())
-    df["last5_minutes"] = grouped["MIN"].transform(lambda x: x.shift(1).rolling(5).mean())
-    df["last5_gmsc"] = grouped["gmsc"].transform(lambda x: x.shift(1).rolling(5).mean())
-    df["home_game"] = df["MATCHUP"].astype(str).str.contains("vs", case=False, na=False).astype(int)
-    df["days_rest"] = grouped["GAME_DATE"].diff().dt.days.fillna(3)
-    df["is_back_to_back"] = (df["days_rest"] == 1).astype(int)
-    df["usage_proxy"] = df["FGA"] + 0.44 * df["FTA"] + df["TOV"]
-    df["last5_usage_proxy"] = grouped["usage_proxy"].transform(lambda x: x.shift(1).rolling(5).mean())
-    df["season_minutes_avg"] = grouped["MIN"].transform(lambda x: x.shift(1).expanding().mean())
-    df["predicted_minutes"] = df["last5_minutes"].combine_first(df["season_minutes_avg"])
-    df["minutes_volatility"] = grouped["MIN"].transform(lambda x: x.shift(1).rolling(5).std())
-    df["points_volatility"] = grouped["PTS"].transform(lambda x: x.shift(1).rolling(5).std())
-    df["opponent"] = df["MATCHUP"].astype(str).str.split().str[-1]
-
-    opp_grouped = df.groupby("opponent")
-    df["opp_pts_allowed"] = opp_grouped["PTS"].transform(lambda x: x.shift(1).rolling(10).mean())
-    df["opp_pts_allowed_last5"] = opp_grouped["PTS"].transform(lambda x: x.shift(1).rolling(5).mean())
-    df["opp_pts_volatility"] = opp_grouped["PTS"].transform(lambda x: x.shift(1).rolling(10).std())
-
-    df["is_star"] = (df["player_avg_pts"] >= 20).astype(int)
-    df["closing_line"] = float(sportsbook_line) if sportsbook_line is not None else df["player_avg_pts"]
-    df["last5_3pa"] = grouped["FG3A"].transform(lambda x: x.shift(1).rolling(5).mean())
-
-    required_features = [
-        "player_avg_pts",
-        "player_avg_pts_sq",
-        "season_minutes_avg",
-        "predicted_minutes",
-        "home_game",
-        "days_rest",
-        "is_back_to_back",
-        "last3_pts",
-        "last5_pts",
-        "last10_pts",
-        "last20_pts",
-        "last5_fga",
-        "last5_fta",
-        "last5_minutes",
-        "last5_gmsc",
-        "last5_usage_proxy",
-        "minutes_volatility",
-        "opp_pts_allowed",
-        "opp_pts_allowed_last5",
-        "points_volatility",
-        "is_star",
-        "closing_line",
-        "opp_pts_volatility",
-        "last5_3pa",
-    ]
-
-    df_features = df.copy()
-
-    for col in required_features:
-        if col not in df_features.columns:
-            df_features[col] = pd.NA
-
-    df_features[required_features] = df_features[required_features].ffill().bfill()
-
-    core_required = [
-        "player_avg_pts",
-        "player_avg_pts_sq",
-        "season_minutes_avg",
-        "predicted_minutes",
-        "home_game",
-        "days_rest",
-        "is_back_to_back",
-        "closing_line",
-    ]
-
-    df_features = df_features.dropna(subset=core_required).reset_index(drop=True)
-    if df_features.empty:
-        return None
-
-    latest = df_features.iloc[-1]
-    feature_data = {col: latest.get(col) for col in required_features}
-    return pd.DataFrame([feature_data])
-
 @cache_data(ttl=180)
 def get_scoreboard_for_date(game_date=None):
     try:
@@ -583,7 +437,9 @@ def get_scoreboard_for_date(game_date=None):
             game_date = datetime.now().strftime("%m/%d/%Y")
         return scoreboardv2.ScoreboardV2(
             game_date=game_date,
-            day_offset=0,
+            # nba_api's own default (DayOffset.default) is the string "0",
+            # not the int 0 -- matching it keeps behavior identical.
+            day_offset="0",
             league_id="00",
             timeout=12
         ).get_data_frames()
@@ -939,7 +795,7 @@ def get_top_plays_today_df(api_key, debug=False):
     for i, (_, row) in enumerate(props_df.iterrows(), start=1):
         raw_name = row["player_name_raw"]
 
-        if debug:
+        if debug and status_box is not None and progress_bar is not None:
             status_box.markdown(
                 f"""
                 <div class="status-box">
@@ -1034,7 +890,7 @@ def get_top_plays_today_df(api_key, debug=False):
             unsafe_allow_html=True
         )
 
-    if debug and progress_bar is not None:
+    if debug and status_box is not None and progress_bar is not None:
         progress_bar.progress(1.0)
         time.sleep(0.3)
         status_box.empty()
