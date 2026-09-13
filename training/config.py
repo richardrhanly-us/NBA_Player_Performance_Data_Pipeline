@@ -27,6 +27,7 @@ TRAINING_SEASONS = ("2023-24", "2024-25", "2025-26")
 
 TRAINING_ROOT = Path(__file__).resolve().parent
 RAW_DATA_DIR = TRAINING_ROOT / "data" / "raw"
+PROCESSED_DATA_DIR = TRAINING_ROOT / "data" / "processed"
 
 # ---------------------------------------------------------------------------
 # stats.nba.com request behavior

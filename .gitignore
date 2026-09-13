@@ -7,3 +7,7 @@ __pycache__/
 # Large, regenerable from stats.nba.com, and specific to whoever ran the
 # collector -- see training/data/README.md for how to regenerate it.
 training/data/raw/
+
+# Processed V1 feature panel built by training/dataset.py -- regenerable
+# from the raw data above via `python -m training.dataset build`.
+training/data/processed/
