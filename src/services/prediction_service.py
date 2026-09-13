@@ -285,6 +285,7 @@ def predict_player(
 
     matched_game = _match_todays_game(team_id, todays_games)
     game_id = matched_game.game_id if matched_game is not None else None
+    game_date = matched_game.game_date if matched_game is not None else None
     game_status = matched_game.game_status_text if matched_game is not None else None
 
     edge, direction = compute_edge_and_direction(model_projection, sportsbook_line)
@@ -300,6 +301,7 @@ def predict_player(
         team_abbreviation=team_abbreviation,
         matchup=matchup,
         game_id=game_id,
+        game_date=game_date,
         game_status=game_status,
         model_projection=model_projection,
         sportsbook_line=sportsbook_line,

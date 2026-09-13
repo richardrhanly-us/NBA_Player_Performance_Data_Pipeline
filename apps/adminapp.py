@@ -24,6 +24,7 @@ from src.shared_app import (
     get_top_plays_today_df,
     get_available_sportsbooks,
     load_active_players,
+    get_scoreboard_for_date,
 )
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -469,6 +470,72 @@ def load_strong_plays_df():
         return pd.DataFrame()
 
 
+@st.cache_data(ttl=30, show_spinner=False)
+def get_automation_health():
+    """
+    Step 10: detailed, admin-only operational status for the
+    prediction-history automation -- schema readiness, the latest
+    persisted run, pending/settled counts, and freshness. Read-only
+    (never applies migrations, never runs a cycle). Returns a dict with
+    a top-level "configured" flag: False whenever DATABASE_URL isn't
+    set, so this page degrades the same way every other DB-backed
+    section in the app does rather than raising.
+    """
+    if not os.environ.get("DATABASE_URL"):
+        return {"configured": False}
+
+    from src.services.automation_config import AUTOMATION_ENABLED, STALE_AFTER_HOURS
+    from src.services.db_connection import get_prediction_db_connection
+    from src.services.migrations import is_schema_ready
+    from src.services.orchestration import compute_board_freshness
+    from src.services.prediction_repository import get_latest_run
+
+    try:
+        conn = get_prediction_db_connection()
+    except Exception as e:
+        return {"configured": True, "error": str(e)}
+
+    try:
+        schema_ready = is_schema_ready(conn)
+        latest_run = get_latest_run(conn) if schema_ready else None
+        pending_count = None
+        settled_count = None
+        if schema_ready:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT COUNT(*) FROM prediction_snapshots s "
+                "LEFT JOIN prediction_outcomes o ON o.prediction_snapshot_id = s.id "
+                "WHERE o.id IS NULL AND s.prediction_status = 'ok'"
+            )
+            pending_count = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM prediction_outcomes WHERE result_status != 'PENDING'")
+            settled_count = cur.fetchone()[0]
+    finally:
+        conn.close()
+
+    try:
+        games_today = len(get_scoreboard_for_date()) > 0
+    except Exception:
+        games_today = False
+
+    freshness_status, freshness_message = (
+        compute_board_freshness(latest_run=latest_run, games_today=games_today, stale_after_hours=STALE_AFTER_HOURS)
+        if schema_ready
+        else (None, None)
+    )
+
+    return {
+        "configured": True,
+        "schema_ready": schema_ready,
+        "automation_enabled": AUTOMATION_ENABLED,
+        "latest_run": latest_run,
+        "pending_count": pending_count,
+        "settled_count": settled_count,
+        "freshness_status": freshness_status.value if freshness_status else None,
+        "freshness_message": freshness_message,
+    }
+
+
 st.markdown(
     f"""
     <div class="hero">
@@ -631,6 +698,44 @@ with overview_tab:
     else:
         st.warning("Could not load Strong Plays status.")
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown(
+        '<div class="section-card"><div class="section-title">Prediction Automation Health</div>',
+        unsafe_allow_html=True,
+    )
+    automation_health = get_automation_health()
+    if not automation_health.get("configured"):
+        st.info("Prediction-history automation is not configured (no DATABASE_URL set).")
+    elif automation_health.get("error"):
+        st.warning(f"Could not reach the prediction-history database: {automation_health['error']}")
+    elif not automation_health.get("schema_ready"):
+        st.warning(
+            "Prediction-history schema is not migrated on this database. "
+            "Run scripts/apply_prediction_history_migrations.py."
+        )
+    else:
+        latest_run = automation_health.get("latest_run")
+        kill_switch_label = "ENABLED" if automation_health.get("automation_enabled") else "DISABLED (kill switch off)"
+        run_summary = (
+            f"run #{latest_run['id']} · {latest_run['run_status']} · "
+            f"{latest_run['predictions_generated']} predictions · generated {latest_run['generated_at_utc']}"
+            if latest_run
+            else "no run persisted yet"
+        )
+        st.markdown(
+            f"""
+            <div class="status-box">
+                <div><span class="muted">Automation:</span> {kill_switch_label}</div>
+                <div><span class="muted">Freshness:</span> {automation_health.get("freshness_status") or "UNKNOWN"}
+                    &nbsp;-&nbsp; {automation_health.get("freshness_message") or ""}</div>
+                <div><span class="muted">Latest run:</span> {run_summary}</div>
+                <div><span class="muted">Pending settlement:</span> {automation_health.get("pending_count")}
+                    &nbsp; | &nbsp; <span class="muted">Settled to date:</span> {automation_health.get("settled_count")}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     st.markdown("</div>", unsafe_allow_html=True)
 
 

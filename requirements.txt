@@ -1,5 +1,5 @@
 streamlit
-pandas
+pandas<3
 joblib
 scipy
 nba_api
@@ -13,3 +13,5 @@ streamlit-autorefresh
 oauth2client
 pytest
 pyarrow
+psycopg[binary]
+pyyaml

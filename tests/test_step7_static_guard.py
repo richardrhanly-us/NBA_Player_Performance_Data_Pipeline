@@ -25,6 +25,19 @@ MIGRATED_RUNTIME_MODULES = (
     "src/services/prediction_service.py",
     "src/services/prediction_result.py",
     "src/services/persistence.py",
+    # Step 9: production prediction history/settlement -- these talk to
+    # Postgres/SQLite and re-fetch results via the same provider boundary,
+    # never nba_api directly.
+    "src/services/db_connection.py",
+    "src/services/migrations.py",
+    "src/services/schema_sqlite.py",
+    "src/services/prediction_repository.py",
+    "src/services/settlement_service.py",
+    "src/services/performance_service.py",
+    # Step 10: production orchestration/automation-config modules must
+    # hold to the same provider-boundary guard.
+    "src/services/orchestration.py",
+    "src/services/automation_config.py",
 )
 
 ALLOWED_NBA_API_LOCATIONS = (

@@ -1,10 +1,11 @@
 import os
 import sys
-from urllib.parse import quote_plus
-import uuid
-from datetime import datetime
-from zoneinfo import ZoneInfo
 import textwrap
+import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Any, cast
+from urllib.parse import quote_plus
+from zoneinfo import ZoneInfo
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import gspread
@@ -16,10 +17,14 @@ from streamlit_autorefresh import st_autorefresh
 
 
 
+from src.services.performance_service import compute_performance_summary
+from src.services.prediction_repository import (
+    compute_board_idempotency_key,
+    get_settled_predictions,
+)
 from src.services.prediction_result import PredictionStatus
 from src.services.prediction_service import build_daily_prediction_board, predict_player
 from src.shared_app import (
-    APP_VERSION,
     BOOKMAKER_KEY,
     CURRENT_SEASON,
     EDGE_THRESHOLD,
@@ -30,6 +35,7 @@ from src.shared_app import (
     get_player_details,
     get_player_gamelog_df,
     get_player_points_lines,
+    get_scoreboard_for_date,
     get_strong_plays_health,
     get_strong_plays_summary,
     load_active_players,
@@ -38,10 +44,9 @@ from src.shared_app import (
     normalize_name,
 )
 
-try:
-    from src.shared_app import get_team_game_info
-except ImportError:
-    get_team_game_info = None
+import src.shared_app as _shared_app
+
+get_team_game_info = getattr(_shared_app, "get_team_game_info", None)
 
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -906,7 +911,6 @@ def ensure_usage_log_sheet():
     existing_values = ws.get_all_values()
     if not existing_values:
         ws.update(
-            "A1:F1",
             [[
                 "timestamp",
                 "event_type",
@@ -914,7 +918,8 @@ def ensure_usage_log_sheet():
                 "player_name",
                 "sportsbook",
                 "details",
-            ]]
+            ]],
+            range_name="A1:F1",
         )
 
     return ws
@@ -934,7 +939,7 @@ def write_usage_log(event_type, session_id, player_name="", sportsbook="", detai
                 "" if sportsbook is None else str(sportsbook),
                 str(details),
             ],
-            value_input_option="USER_ENTERED",
+            value_input_option=cast(Any, "USER_ENTERED"),
         )
     except Exception:
         pass
@@ -969,27 +974,113 @@ def get_player_lookup():
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_daily_prediction_board_cached(bookmaker_key):
-    """
-    Step 8: today's full points-prop board, computed fresh from
-    BasketballDataProvider + the existing sportsbook odds feed (see
-    src/services/prediction_service.py::build_daily_prediction_board).
-
-    ttl=300 matches the existing sportsbook-line-facing caches in this
-    file (get_player_points_lines, get_today_games) -- sportsbook lines
-    are the most time-sensitive input the board depends on, so this
-    freshness window is chosen to match them, not chosen independently.
-    Returns None if no odds API key is configured (distinct from an
-    empty board, which means the key works but there are no props/games
-    today).
-    """
     api_key = get_odds_api_key()
     if not api_key:
         return None
     return build_daily_prediction_board(api_key=api_key, bookmaker_key=bookmaker_key)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def get_board_persistence_status_cached(idempotency_key):
+    """
+    Step 9: read-only check of whether today's board content has already
+    been written to prediction history. Persistence itself is NOT done
+    from this public, anonymous-facing UI -- it happens via the
+    separate, scheduled scripts/persist_prediction_board.py job (see its
+    docstring). This just reports status so the UI can be transparent
+    about it without letting persistence mechanics dominate the page.
+
+    Returns None if no history database is configured (DATABASE_URL
+    unset -- a normal, expected state in dev/offseason), True if a run
+    with this exact content already exists, False otherwise.
+    """
+    if not os.environ.get("DATABASE_URL"):
+        return None
+    from src.services.db_connection import get_prediction_db_connection
+    from src.services.prediction_repository import get_run_by_idempotency_key
+
+    conn = get_prediction_db_connection()
+    try:
+        return get_run_by_idempotency_key(conn, idempotency_key) is not None
+    finally:
+        conn.close()
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_prediction_history_cached(start_date, end_date, direction, qualified_only):
+    """
+    Step 9: read-only prediction-history summary + settled predictions
+    for the public "Prediction History" section below. Returns None if
+    no history database is configured (DATABASE_URL unset) rather than
+    raising -- the section degrades gracefully, same as the odds-API-key
+    gap above. ttl=300 matches get_daily_prediction_board_cached --
+    settlement runs on its own schedule, not on every page view.
+    """
+    if not os.environ.get("DATABASE_URL"):
+        return None
+    from src.services.db_connection import get_prediction_db_connection
+
+    conn = get_prediction_db_connection()
+    try:
+        summary = compute_performance_summary(
+            conn,
+            start_date=start_date,
+            end_date=end_date,
+            direction=direction,
+            qualified_only=qualified_only,
+        )
+        rows = get_settled_predictions(
+            conn,
+            start_date=start_date,
+            end_date=end_date,
+            direction=direction,
+            qualified_only=qualified_only,
+        )
+    finally:
+        conn.close()
+    return summary, rows
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_board_freshness_cached():
+    """
+    Step 10: read-only freshness classification for the small status
+    line near the Edge Board (FRESH / WAITING_FOR_PROPS / NO_GAMES /
+    STALE) -- see src/services/orchestration.py::compute_board_freshness.
+    Returns None if no history database is configured, so this degrades
+    the same way every other DB-backed section in this file does.
+    Never raises -- a lookup failure is treated as "unknown" rather than
+    surfaced to public users.
+    """
+    if not os.environ.get("DATABASE_URL"):
+        return None
+    try:
+        from src.services.automation_config import STALE_AFTER_HOURS
+        from src.services.db_connection import get_prediction_db_connection
+        from src.services.orchestration import compute_board_freshness
+        from src.services.prediction_repository import get_latest_run
+
+        try:
+            games_today = len(get_scoreboard_for_date()) > 0
+        except Exception:
+            games_today = False
+
+        conn = get_prediction_db_connection()
+        try:
+            latest_run = get_latest_run(conn)
+        finally:
+            conn.close()
+
+        status, message = compute_board_freshness(
+            latest_run=latest_run, games_today=games_today, stale_after_hours=STALE_AFTER_HOURS
+        )
+        return status.value, message
+    except Exception:
+        return None
+
+
 @st.cache_data(ttl=60)
-def build_prediction(player_name, sportsbook_line):
+def build_prediction(player_name: str, sportsbook_line: float | None) -> dict[str, Any]:
     # Step 8: the "resolve player -> recent gamelog -> legacy feature row
     # -> model.predict" core is now delegated to
     # src.services.prediction_service.predict_player (the same function
@@ -1375,13 +1466,20 @@ st.markdown(
     unsafe_allow_html=True,
 )
 try:
+    freshness = get_board_freshness_cached()  # Step 10: (status_str, message) or None
+
     if not get_odds_api_key():
         st.info("Edge board unavailable: no odds data source is configured right now.")
     else:
         board = get_daily_prediction_board_cached(BOOKMAKER_KEY)
 
         if board is None or not board.predictions:
-            st.info("No player-points props are available right now.")
+            if freshness is not None and freshness[0] == "NO_GAMES":
+                st.info("No NBA games are scheduled today.")
+            elif freshness is not None and freshness[0] == "WAITING_FOR_PROPS":
+                st.info("Games are scheduled today, but no player-points props have been posted yet.")
+            else:
+                st.info("No player-points props are available right now.")
         else:
             st.caption(
                 f"{board.props_discovered} props discovered · "
@@ -1389,8 +1487,27 @@ try:
                 f"{board.unmatched_count} unmatched · "
                 f"{board.unavailable_count} unavailable · "
                 f"pregame projections only · model {board.model_version} · "
-                f"generated {board.generated_at_utc}"
+                f"{board.bookmaker} · generated {board.generated_at_utc}"
             )
+
+            try:
+                persisted = get_board_persistence_status_cached(
+                    compute_board_idempotency_key(board)
+                )
+            except Exception:
+                persisted = None
+            if persisted is not None:
+                st.caption(
+                    "History: "
+                    + (
+                        "this board is saved to prediction history."
+                        if persisted
+                        else "this board has not yet been recorded to prediction "
+                        "history (recorded by the scheduled history job, not this page)."
+                    )
+                )
+            if freshness is not None and freshness[0] == "STALE":
+                st.caption(f"Note: {freshness[1]}")
 
             ok_predictions = [r for r in board.predictions if r.status == PredictionStatus.OK]
             other_predictions = [r for r in board.predictions if r.status != PredictionStatus.OK]
@@ -1448,6 +1565,153 @@ except Exception as e:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
+# ---------------------------------------------------------------------------
+# Step 9: Prediction History -- a record of past predictions and how they
+# actually settled, built from prediction_runs/prediction_snapshots/
+# prediction_outcomes (see src/services/{prediction_repository,
+# performance_service}.py). Every value shown here is a snapshot captured
+# at prediction time; sportsbook lines can move after a prediction is
+# made, and predictions are not guarantees of outcome. Pending
+# (unsettled) predictions are excluded entirely, and pushes are excluded
+# from the win-rate denominator.
+# ---------------------------------------------------------------------------
+st.markdown(
+    '<div class="section-card"><div class="section-title">Prediction History</div>',
+    unsafe_allow_html=True,
+)
+try:
+    if not os.environ.get("DATABASE_URL"):
+        st.info("Prediction history is unavailable: no history database is configured right now.")
+    else:
+        hist_col1, hist_col2, hist_col3, hist_col4 = st.columns(4)
+        with hist_col1:
+            date_range_choice = st.selectbox(
+                "Date range",
+                ["Last 7 days", "Last 30 days", "Last 90 days", "All time"],
+                index=1,
+                key="history_date_range",
+            )
+        with hist_col2:
+            direction_choice = st.selectbox(
+                "Lean", ["All", "OVER", "UNDER"], key="history_direction"
+            )
+        with hist_col3:
+            qualified_choice = st.selectbox(
+                "Edge",
+                ["All predictions", f"Qualified only (±{EDGE_THRESHOLD:.1f}+)"],
+                key="history_qualified",
+            )
+        with hist_col4:
+            result_choice = st.selectbox(
+                "Result", ["All", "WIN", "LOSS", "PUSH"], key="history_result"
+            )
+
+        _range_days = {
+            "Last 7 days": 7,
+            "Last 30 days": 30,
+            "Last 90 days": 90,
+            "All time": None,
+        }[date_range_choice]
+        history_start_date = (
+            (datetime.now(timezone.utc) - timedelta(days=_range_days)).isoformat()
+            if _range_days is not None
+            else None
+        )
+        history_direction = None if direction_choice == "All" else direction_choice
+        history_qualified_only = qualified_choice.startswith("Qualified")
+
+        history = get_prediction_history_cached(
+            history_start_date, None, history_direction, history_qualified_only
+        )
+        if history is None:
+            st.info("Prediction history is unavailable: no history database is configured right now.")
+        else:
+            summary, settled_rows = history
+            if result_choice != "All":
+                settled_rows = [
+                    r for r in settled_rows if r.get("outcome_result_status") == result_choice
+                ]
+
+            if summary.graded == 0:
+                st.info("No settled predictions yet for this filter.")
+            else:
+                record = f"{summary.wins}-{summary.losses}-{summary.pushes}"
+                win_rate_pct = (
+                    f"{summary.win_rate * 100:.1f}%" if summary.win_rate is not None else "—"
+                )
+                qualified_record = (
+                    f"{summary.qualified_wins}-{summary.qualified_losses}-"
+                    f"{summary.qualified_pushes}"
+                )
+                qualified_win_rate_pct = (
+                    f"{summary.qualified_win_rate * 100:.1f}%"
+                    if summary.qualified_win_rate is not None
+                    else "—"
+                )
+
+                metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+                metric_col1.metric("Predictions Graded", summary.graded)
+                metric_col2.metric("Record (W-L-P)", record)
+                metric_col3.metric("Win Rate", win_rate_pct)
+                metric_col4.metric(
+                    "Qualified Win Rate",
+                    qualified_win_rate_pct,
+                    help=f"Qualified record: {qualified_record}",
+                )
+
+                st.caption(
+                    "Win rate excludes pushes from the denominator; unsettled "
+                    f"(pending) predictions are excluded entirely. \"Qualified\" means "
+                    f"|edge| ≥ {EDGE_THRESHOLD:.1f}, the site's existing edge "
+                    "threshold -- these results do not change that threshold."
+                )
+
+                history_table_rows = [
+                    {
+                        "Date": (r.get("game_date") or (r.get("generated_at_utc") or "")[:10]),
+                        "Player": r.get("player_name"),
+                        "Projection": (
+                            f"{r['model_projection']:.2f}"
+                            if r.get("model_projection") is not None
+                            else "—"
+                        ),
+                        "Line": (
+                            f"{r['sportsbook_line']:.1f}"
+                            if r.get("sportsbook_line") is not None
+                            else "—"
+                        ),
+                        "Edge": f"{r['edge']:+.2f}" if r.get("edge") is not None else "—",
+                        "Lean": r.get("direction") or "—",
+                        "Actual": (
+                            f"{r['outcome_actual_points']:.1f}"
+                            if r.get("outcome_actual_points") is not None
+                            else "—"
+                        ),
+                        "Result": r.get("outcome_result_status"),
+                    }
+                    for r in settled_rows[:100]
+                ]
+                if not history_table_rows:
+                    st.info("No settled predictions match this result filter.")
+                else:
+                    st.dataframe(
+                        pd.DataFrame(history_table_rows),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                    if len(settled_rows) > 100:
+                        st.caption(f"Showing the most recent 100 of {len(settled_rows)} settled predictions.")
+
+                st.caption(
+                    "Values shown are snapshots captured at prediction time -- "
+                    "sportsbook lines can move after a prediction is made, and "
+                    "predictions are not guarantees of outcome."
+                )
+except Exception as e:
+    st.info(f"Prediction history is temporarily unavailable: {e}")
+
+st.markdown("</div>", unsafe_allow_html=True)
+
 st.markdown(
     '<div class="section-card"><div class="section-title">Player Projection</div>',
     unsafe_allow_html=True,
@@ -1474,13 +1738,14 @@ player_index = None
 if default_player in player_names:
     player_index = player_names.index(default_player)
 
-selected_player = st.selectbox(
+selected_player_raw = st.selectbox(
     "Search for a player",
     options=player_names,
     index=player_index,
     placeholder="Start typing a player name...",
     key="player_projection_selectbox",
 )
+selected_player: str | None = str(selected_player_raw) if selected_player_raw is not None else None
 
 # The player selector is shared by both modes.
 st.session_state.selected_player_from_top_play = selected_player
@@ -1562,18 +1827,21 @@ else:
     if default_book in sportsbooks:
         book_index = sportsbooks.index(default_book)
 
-    selected_book = st.selectbox(
+    selected_book_raw = st.selectbox(
         "Sportsbook",
         options=sportsbooks,
         index=book_index if sportsbooks else None,
         placeholder="Choose a sportsbook...",
         key="sportsbook_selectbox",
     )
+    selected_book: str | None = (
+        str(selected_book_raw) if selected_book_raw is not None else None
+    )
 
     st.session_state.selected_book_from_top_play = selected_book
 
-    live_line = None
-    player_lines = None
+    live_line: float | None = None
+    player_lines: dict[str, Any] | None = None
 
     if selected_player and selected_book:
         loading_placeholder = st.empty()
@@ -1585,7 +1853,12 @@ else:
         try:
             player_lines = get_player_points_lines(selected_player, selected_book)
             if player_lines:
-                live_line = player_lines.get("points_line")
+                raw_live_line = player_lines.get("points_line")
+                if raw_live_line is not None:
+                    try:
+                        live_line = float(raw_live_line)
+                    except (TypeError, ValueError):
+                        live_line = None
         except Exception as e:
             st.warning(f"Could not load sportsbook line: {e}")
         finally:
@@ -1596,30 +1869,31 @@ else:
     line_is_live = live_line is not None
     line_status = "live" if line_is_live else "manual_input"
 
-    sportsbook_line = st.number_input(
-        "Sportsbook points line",
-        min_value=0.0,
-        max_value=80.0,
-        value=manual_default,
-        step=0.5,
-        key=f"sportsbook_line_{selected_player}_{selected_book}",
+    sportsbook_line = float(
+        st.number_input(
+            "Sportsbook points line",
+            min_value=0.0,
+            max_value=80.0,
+            value=manual_default,
+            step=0.5,
+            key=f"sportsbook_line_{selected_player}_{selected_book}",
+        )
     )
 
     manual_override = (
-        line_is_live and
-        float(sportsbook_line) != float(live_line)
+        line_is_live and live_line is not None and sportsbook_line != live_line
     )
 
     if line_status == "live" and not manual_override:
-        st.caption(f"Live line • {selected_book}: {float(live_line):.1f}")
+        st.caption(f"Live line • {selected_book}: {live_line:.1f}")
     elif manual_override:
-        st.caption(f"Manual override • using {float(sportsbook_line):.1f}")
+        st.caption(f"Manual override • using {sportsbook_line:.1f}")
     else:
-        st.caption(f"Manual input • using {float(sportsbook_line):.1f}")
+        st.caption(f"Manual input • using {sportsbook_line:.1f}")
 
     if selected_player:
         with st.spinner("Building projection..."):
-            result = build_prediction(selected_player, float(sportsbook_line))
+            result = build_prediction(selected_player, sportsbook_line)
 
         search_key = f"{selected_player}|{selected_book}|{sportsbook_line}"
 
@@ -1628,14 +1902,15 @@ else:
                 event_type="search",
                 session_id=st.session_state.session_id,
                 player_name=selected_player,
-                sportsbook=selected_book,
+                sportsbook=selected_book or "",
                 details=f"line={sportsbook_line}"
             )
             st.session_state.last_logged_search_key = search_key
 
         game_is_final = False
-        if result.get("live_stats"):
-            game_status_text = str(result["live_stats"].get("game_status", "")).upper()
+        result_live_stats = result.get("live_stats")
+        if isinstance(result_live_stats, dict):
+            game_status_text = str(result_live_stats.get("game_status", "")).upper()
             game_is_final = "FINAL" in game_status_text
 
         if game_is_final and not line_is_live:
@@ -1670,7 +1945,8 @@ else:
             edge = result.get("edge")
             over_prob = result.get("over_prob")
             under_prob = result.get("under_prob")
-            live_stats = result.get("live_stats")
+            live_stats_raw = result.get("live_stats")
+            live_stats = live_stats_raw if isinstance(live_stats_raw, dict) else None
 
             if edge is not None:
                 pick_text, pick_kind = get_pick_label(edge)

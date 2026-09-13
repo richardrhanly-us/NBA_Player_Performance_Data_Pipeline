@@ -68,8 +68,15 @@ class PredictionResult:
     matchup: str | None = None
     # From BasketballDataProvider.get_todays_scoreboard(), matched by the
     # player's team_id when that lookup succeeds -- best-effort, always
-    # allowed to be None.
+    # allowed to be None. game_date is the SCHEDULED game's date (the
+    # game this prediction is FOR), distinct from latest_game_date
+    # below (the most recent ALREADY-PLAYED game the projection was
+    # built from) -- added in Step 9 specifically so a later settlement
+    # process can re-query the provider for this exact (game_id,
+    # game_date) to confirm the game finished and find the result,
+    # without guessing from name/date text matching.
     game_id: str | None = None
+    game_date: str | None = None
     game_status: str | None = None
 
     model_projection: float | None = None

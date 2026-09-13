@@ -1,14 +1,31 @@
 """
-Shared pytest fixtures. Currently just the synthetic V1-shaped panel used
-by the Step 5 (training/experiments/) test suite -- small, fast, and
-structurally realistic (all V1_FEATURE_NAMES present, some genuine NaNs,
-multiple distinct GAME_DATE values within the train split so temporal CV
-folds are meaningful) without depending on the real 79k-row panel.
+Shared pytest fixtures: the synthetic V1-shaped panel used by the
+Step 5 (training/experiments/) test suite, and (Step 9) an in-memory
+SQLite connection with the prediction-history schema applied, used by
+the prediction-repository/settlement/performance test suite in place of
+a live Postgres/Neon database (none is reachable in this environment or
+in CI -- see the Step 9 report's migration-validation section).
 """
+
+import sqlite3
 
 import numpy as np
 import pandas as pd
 import pytest
+
+from src.services.schema_sqlite import create_sqlite_prediction_schema
+
+
+@pytest.fixture
+def db_conn():
+    """A fresh, isolated in-memory SQLite connection with the
+    prediction-history schema (prediction_runs/prediction_snapshots/
+    prediction_outcomes) already applied -- real SQL constraint
+    enforcement (UNIQUE, CHECK, FOREIGN KEY), fully offline."""
+    conn = sqlite3.connect(":memory:")
+    create_sqlite_prediction_schema(conn)
+    yield conn
+    conn.close()
 
 
 def _make_row(rng, game_counter, season, split, game_date, i):
