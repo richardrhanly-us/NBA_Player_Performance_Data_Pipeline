@@ -12,3 +12,4 @@ requests
 streamlit-autorefresh
 oauth2client
 pytest
+pyarrow

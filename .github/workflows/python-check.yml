@@ -51,7 +51,7 @@ jobs:
       - name: Compile Python files
         shell: bash
         run: |
-          python -m compileall -q apps scripts src tests
+          python -m compileall -q apps scripts src tests training
 
       - name: Verify important imports
         shell: bash
@@ -73,7 +73,7 @@ jobs:
             echo "## Python Code Check"
             echo
             echo "- **Python version:** 3.11"
-            echo "- **Syntax validation:** apps, scripts, src, and tests"
+            echo "- **Syntax validation:** apps, scripts, src, tests, and training"
             echo "- **Dependency installation:** requirements.txt"
             echo "- **Tests:** pytest tests/"
             echo "- **Result:** ${{ job.status }}"

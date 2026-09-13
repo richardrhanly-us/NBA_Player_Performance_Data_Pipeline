@@ -2,3 +2,8 @@
 __pycache__/
 .pytest_cache/
 .ruff_cache/
+
+# Raw historical data collected by training/data/collect_gamelogs.py.
+# Large, regenerable from stats.nba.com, and specific to whoever ran the
+# collector -- see training/data/README.md for how to regenerate it.
+training/data/raw/
