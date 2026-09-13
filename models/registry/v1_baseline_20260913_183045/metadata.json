@@ -1,0 +1,75 @@
+{
+  "model_type": "RandomForestRegressor",
+  "hyperparameters": {
+    "n_estimators": 400,
+    "max_depth": 10,
+    "min_samples_leaf": 5,
+    "min_samples_split": 10,
+    "max_features": "sqrt",
+    "random_state": 42
+  },
+  "target": "PTS",
+  "feature_schema": [
+    "player_avg_pts",
+    "player_avg_pts_sq",
+    "season_minutes_avg",
+    "recent_minutes_avg",
+    "home_game",
+    "days_rest",
+    "is_back_to_back",
+    "last3_pts",
+    "last5_pts",
+    "last10_pts",
+    "last20_pts",
+    "last5_fga",
+    "last5_fta",
+    "last5_3pa",
+    "last5_minutes",
+    "last5_gmsc",
+    "last5_usage_proxy",
+    "minutes_volatility",
+    "points_volatility",
+    "opponent_points_allowed_per_game",
+    "opponent_points_allowed_last5",
+    "opponent_pace",
+    "opponent_defensive_rating"
+  ],
+  "missing_value_policy": "native RandomForestRegressor NaN support (sklearn 1.6.1, input_tags.allow_nan=True verified at training start) -- no imputation performed",
+  "panel_path": "C:\\Users\\richa\\Documents\\Projects\\NBA_Player_Performance_Data_Pipeline\\training\\data\\processed\\v1_panel.parquet",
+  "split_boundary": {
+    "train_seasons": [
+      "2023-24",
+      "2024-25"
+    ],
+    "validation_test_season": "2025-26",
+    "validation_test_boundary_date": "2026-02-01 00:00:00"
+  },
+  "eligible_row_counts": {
+    "train": 47154,
+    "validation": 13563,
+    "test": 10242
+  },
+  "data_date_ranges": {
+    "train": {
+      "min": "2023-11-02 00:00:00",
+      "max": "2025-04-13 00:00:00"
+    },
+    "validation": {
+      "min": "2025-10-30 00:00:00",
+      "max": "2026-02-01 00:00:00"
+    },
+    "test": {
+      "min": "2026-02-02 00:00:00",
+      "max": "2026-04-12 00:00:00"
+    }
+  },
+  "git_commit": "f447d5a8cacfff223c761b4e4c65bb7c48fe02c1",
+  "python_version": "3.9.6 (tags/v3.9.6:db3ff76, Jun 28 2021, 15:26:21) [MSC v.1929 64 bit (AMD64)]",
+  "platform": "Windows-10-10.0.19045-SP0",
+  "sklearn_version": "1.6.1",
+  "pandas_version": "2.3.3",
+  "numpy_version": "2.0.2",
+  "training_start_utc": "2026-09-13T18:30:19.499629+00:00",
+  "training_end_utc": "2026-09-13T18:30:43.296043+00:00",
+  "training_duration_seconds": 23.796414
+}

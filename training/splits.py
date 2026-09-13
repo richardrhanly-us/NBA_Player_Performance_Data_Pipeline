@@ -32,6 +32,23 @@ If a future season is added to TRAIN_SEASONS or used to replace
 VALIDATION_TEST_SEASON, recompute this constant the same way (see
 scripts note in this module) and update it deliberately -- do not leave a
 stale boundary in place for a different season's date range.
+
+-------------------------------------------------------------------------
+THE TEST SPLIT DEFINED HERE IS FROZEN, AS OF THE STEP 4 V1 BASELINE.
+-------------------------------------------------------------------------
+Its results (MAE/RMSE/R2/bias on this exact `test` split) have now been
+observed by a human. From this point forward, ALL future hyperparameter
+tuning, feature selection, model-family comparison, calibration design,
+and any other optimization decision must be made using train/validation
+data only -- never by looking at, or selecting for, an improvement on
+this test split. Evaluating a new candidate on `test` is allowed only as
+a final, infrequent check reported alongside the decision that was
+already made on train/validation grounds -- never as the basis for that
+decision. If the test split ever needs to change (e.g. a new season is
+added and VALIDATION_TEST_SEASON / VALIDATION_TEST_BOUNDARY_DATE moves),
+that is a deliberate, explicitly-called-out change to this module, not
+routine model-development work, and should be treated as resetting this
+freeze for a newly-defined test set.
 """
 
 import pandas as pd

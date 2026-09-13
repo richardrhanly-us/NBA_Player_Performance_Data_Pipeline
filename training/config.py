@@ -26,8 +26,32 @@ TRAINING_SEASONS = ("2023-24", "2024-25", "2025-26")
 # ---------------------------------------------------------------------------
 
 TRAINING_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = TRAINING_ROOT.parent
 RAW_DATA_DIR = TRAINING_ROOT / "data" / "raw"
 PROCESSED_DATA_DIR = TRAINING_ROOT / "data" / "processed"
+DEFAULT_PANEL_PATH = PROCESSED_DATA_DIR / "v1_panel.parquet"
+MODEL_REGISTRY_DIR = REPO_ROOT / "models" / "registry"
+
+# ---------------------------------------------------------------------------
+# V1 baseline model configuration
+#
+# Deliberately the SAME configuration as the currently deployed legacy
+# model (models/points_regression.pkl), confirmed by loading that artifact
+# directly and reading model.get_params(). Kept identical so this step
+# isolates the effect of better data/leakage-safe features/chronological
+# evaluation from the effect of different hyperparameters -- changing both
+# at once would make the comparison uninterpretable. No tuning is
+# performed against this dataset; revisiting these values is later work.
+# ---------------------------------------------------------------------------
+
+V1_BASELINE_MODEL_PARAMS = {
+    "n_estimators": 400,
+    "max_depth": 10,
+    "min_samples_leaf": 5,
+    "min_samples_split": 10,
+    "max_features": "sqrt",
+    "random_state": 42,
+}
 
 # ---------------------------------------------------------------------------
 # stats.nba.com request behavior

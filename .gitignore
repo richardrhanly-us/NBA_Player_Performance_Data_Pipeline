@@ -11,3 +11,28 @@ training/data/raw/
 # Processed V1 feature panel built by training/dataset.py -- regenerable
 # from the raw data above via `python -m training.dataset build`.
 training/data/processed/
+
+# Training-side model registry (models/registry/<version>/), built by
+# training/train.py. This is NOT models/points_regression.pkl (the
+# deployed legacy model, which stays committed as-is) and is not read by
+# any production code path. The large, regenerable binaries (model.pkl,
+# ~35MB; residuals.parquet, ~1MB) are gitignored -- rerun
+# `python -m training.train` to reproduce them from the same panel/seed.
+# metadata.json/metrics.json/feature_importances.json are small,
+# human-readable, and deliberately NOT ignored, so a version's config,
+# scores, and feature ranking are reviewable in git history even though
+# the binary artifact itself isn't committed.
+models/registry/*/model.pkl
+models/registry/*/residuals.parquet
+
+# CURRENT_V1 is a machine-local pointer to whichever version's model.pkl
+# happens to exist on this machine. Since model.pkl itself is gitignored
+# above, committing this pointer would let a clean clone see a named
+# "current" version whose actual model artifact was never shipped --
+# an apparently-usable registry that silently isn't. It stays local-only
+# until a later step introduces real artifact storage (e.g. an artifact
+# store/registry service) where a committed pointer would resolve to
+# something that actually exists for everyone. Run `python -m
+# training.train` locally to (re)create both the version directory and
+# this pointer together.
+models/registry/CURRENT_V1
