@@ -304,3 +304,52 @@ def test_manifest_missing_file_returns_empty_defaults():
     assert manifest["season"] == "2099-00"
     assert manifest["players_succeeded"] == 0
     assert manifest["failed_players"] == {}
+
+
+def test_gamelogs_to_dataframe_round_trips_normalize_raw_gamelog_exactly():
+    """
+    Step 6 provider-refactor safety net: normalize_raw_gamelog (the
+    pre-refactor path) and dataframe_to_player_game_logs ->
+    gamelogs_to_dataframe (the new provider/canonical-record path) must
+    produce byte-identical output for the same underlying raw data --
+    both funnel through the same _finalize_gamelog_frame tail.
+    """
+    from src.data.basketball.normalization import dataframe_to_player_game_logs
+
+    raw = _raw_playergamelog_df(
+        [
+            {
+                "Player_ID": 2544,
+                "Game_ID": "0022300001",
+                "GAME_DATE": "2023-10-24",
+                "MATCHUP": "LAL vs DEN",
+                "WL": "W",
+                "MIN": "38",
+            },
+            {
+                "Player_ID": 2544,
+                "Game_ID": "0022300002",
+                "GAME_DATE": "2023-10-26",
+                "MATCHUP": "LAL @ PHX",
+                "WL": "L",
+                "MIN": "35",
+            },
+        ]
+    )
+
+    old_path = storage.normalize_raw_gamelog(
+        raw, season="2023-24", player_id=2544, player_name="LeBron James"
+    )
+
+    records = dataframe_to_player_game_logs(old_path)
+    new_path = storage.gamelogs_to_dataframe(records)
+
+    pd.testing.assert_frame_equal(old_path, new_path)
+
+
+def test_gamelogs_to_dataframe_empty_input_matches_normalize_raw_gamelog_empty_output():
+    empty_via_normalize = storage.normalize_raw_gamelog(
+        pd.DataFrame(), season="2023-24", player_id=1, player_name="X"
+    )
+    empty_via_records = storage.gamelogs_to_dataframe([])
+    pd.testing.assert_frame_equal(empty_via_normalize, empty_via_records)

@@ -18,6 +18,13 @@ for a season (verified by storage.is_player_collected, not just the
 manifest) are skipped automatically, so stopping the process at any point
 -- Ctrl-C, a crash, a lost connection, a stats.nba.com throttle -- and
 running the same command again continues rather than restarting.
+
+This module consumes the src.data.basketball provider abstraction (a
+BasketballDataProvider), not nba_api/stats.nba.com specifics directly --
+see src/data/basketball/__init__.py. The active provider defaults to the
+NBA development provider (get_basketball_provider()) but can be
+overridden via the `provider` parameter, which is how tests inject a
+fake, offline, in-memory provider instead of hitting the network.
 """
 
 import argparse
@@ -26,8 +33,10 @@ import sys
 import time
 from datetime import datetime, timezone
 
+from src.data.basketball import errors as basketball_errors
+from src.data.basketball.provider import get_basketball_provider
 from training import config
-from training.data import nba_client, storage
+from training.data import storage
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +48,7 @@ def _utc_now_iso() -> str:
 def collect_season(
     season,
     *,
+    provider=None,
     max_players=None,
     force_player_ids=(),
     resume=True,
@@ -48,11 +58,19 @@ def collect_season(
     """
     Collect (or resume collecting) one season's raw player gamelogs.
 
+    `provider` is a src.data.basketball.provider.BasketballDataProvider
+    (defaults to get_basketball_provider(), the active NBA development
+    provider). `sleep_func`/`request_delay` control only the polite
+    pacing delay between players at this orchestration level -- retry
+    backoff for a provider's own transient failures is that provider's
+    internal concern (see src/data/basketball/providers/nba_api_provider.py).
+
     Returns a summary dict with the fields requested for operator
     reporting: season, players attempted/succeeded/failed (for THIS run),
     rows collected (for THIS run), and start/end time, plus a couple of
     cumulative totals useful when resuming across many runs.
     """
+    provider = provider or get_basketball_provider()
     request_delay = (
         config.REQUEST_DELAY_SECONDS if request_delay is None else request_delay
     )
@@ -60,8 +78,8 @@ def collect_season(
 
     run_start = _utc_now_iso()
     logger.info("=== Season %s: fetching roster ===", season)
-    roster_df = nba_client.fetch_season_roster(season, sleep_func=sleep_func)
-    total_in_roster = len(roster_df)
+    roster = provider.get_season_roster(season)
+    total_in_roster = len(roster)
     logger.info("Season %s: %d players played this season", season, total_in_roster)
 
     manifest = storage.load_manifest(season)
@@ -79,9 +97,9 @@ def collect_season(
     players_failed = 0
     rows_collected = 0
 
-    for i, row in enumerate(roster_df.itertuples(index=False), start=1):
-        player_id = int(row.PLAYER_ID)
-        player_name = str(getattr(row, "PLAYER_NAME", "")) or f"player_{player_id}"
+    for i, player in enumerate(roster, start=1):
+        player_id = int(player.player_id)
+        player_name = str(player.player_name or "") or f"player_{player_id}"
 
         force_this_player = player_id in force_player_ids
         # Ground truth only: whether this player's file actually exists and
@@ -125,12 +143,10 @@ def collect_season(
         players_attempted += 1
 
         try:
-            raw_df = nba_client.fetch_player_gamelog(
-                player_id, season, sleep_func=sleep_func
+            game_logs = provider.get_player_game_logs(
+                player_id, season, player_name=player_name
             )
-            normalized_df = storage.normalize_raw_gamelog(
-                raw_df, season=season, player_id=player_id, player_name=player_name
-            )
+            normalized_df = storage.gamelogs_to_dataframe(game_logs)
             storage.save_player_gamelog(
                 normalized_df, season=season, player_id=player_id
             )
@@ -149,7 +165,7 @@ def collect_season(
                 len(normalized_df),
             )
 
-        except nba_client.NbaApiError as exc:
+        except basketball_errors.ProviderError as exc:
             players_failed += 1
             # If a stale manifest still listed this player as completed (the
             # file was actually missing/corrupt, which is why we got here),
@@ -211,13 +227,16 @@ def collect_season(
 def run_collection(
     seasons=None,
     *,
+    provider=None,
     max_players=None,
     force_player_ids=(),
     resume=True,
     sleep_func=time.sleep,
     request_delay=None,
 ):
-    """Run collect_season() over each of `seasons` (default: all configured seasons)."""
+    """Run collect_season() over each of `seasons` (default: all configured
+    seasons), reusing one provider instance across every season."""
+    provider = provider or get_basketball_provider()
     seasons = list(seasons) if seasons else list(config.TRAINING_SEASONS)
     summaries = []
 
@@ -226,6 +245,7 @@ def run_collection(
             summaries.append(
                 collect_season(
                     season,
+                    provider=provider,
                     max_players=max_players,
                     force_player_ids=force_player_ids,
                     resume=resume,
@@ -233,7 +253,7 @@ def run_collection(
                     request_delay=request_delay,
                 )
             )
-        except nba_client.NbaApiError as exc:
+        except basketball_errors.ProviderError as exc:
             # A season-level roster fetch failure (one request) is serious
             # but must not abort a multi-season run -- log it and move on;
             # rerunning will retry the roster fetch for this season.

@@ -120,6 +120,42 @@ def deduplicate(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def _finalize_gamelog_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Shared tail of the raw-gamelog pipeline: enforce dtypes (including
+    re-coercing PLAYER_ID/GAME_ID/GAME_DATE/IS_HOME unconditionally, not
+    just trusting the caller already got them right), fill any missing
+    RAW_GAMELOG_COLUMNS, select/order columns, drop rows missing a key
+    identifier, deduplicate, and sort.
+
+    Used by BOTH normalize_raw_gamelog (raw nba_api DataFrame -> our
+    schema) and gamelogs_to_dataframe (canonical PlayerGameLog records ->
+    our schema), so persisted output is byte-identical regardless of
+    which path produced it -- see gamelogs_to_dataframe's docstring.
+    """
+    df = df.copy()
+
+    df["PLAYER_ID"] = pd.to_numeric(df["PLAYER_ID"], errors="coerce").astype("Int64")
+    df["GAME_ID"] = df["GAME_ID"].astype(str)
+    df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"], errors="coerce")
+    if "IS_HOME" in df.columns:
+        df["IS_HOME"] = pd.to_numeric(df["IS_HOME"], errors="coerce").astype("Int64")
+
+    for col in _NUMERIC_COLUMNS:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    for col in RAW_GAMELOG_COLUMNS:
+        if col not in df.columns:
+            df[col] = pd.NA
+
+    df = df[list(RAW_GAMELOG_COLUMNS)]
+    df = df.dropna(subset=["PLAYER_ID", "GAME_ID", "GAME_DATE"])
+    df = deduplicate(df)
+    df = df.sort_values("GAME_DATE").reset_index(drop=True)
+    return df
+
+
 def normalize_raw_gamelog(
     df: pd.DataFrame, *, season: str, player_id, player_name: str
 ) -> pd.DataFrame:
@@ -138,10 +174,7 @@ def normalize_raw_gamelog(
     df = df.rename(columns={"Player_ID": "PLAYER_ID", "Game_ID": "GAME_ID"})
 
     df["SEASON"] = season
-    df["PLAYER_ID"] = pd.to_numeric(df["PLAYER_ID"], errors="coerce").astype("Int64")
     df["PLAYER_NAME"] = player_name
-    df["GAME_ID"] = df["GAME_ID"].astype(str)
-    df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"], errors="coerce")
 
     if "MATCHUP" in df.columns:
         matchup = df["MATCHUP"].astype(str)
@@ -152,19 +185,68 @@ def normalize_raw_gamelog(
     df["OPPONENT_ABBREVIATION"] = matchup.str.split().str[-1]
     df["IS_HOME"] = matchup.str.contains("vs", case=False, na=False).astype("Int64")
 
-    for col in _NUMERIC_COLUMNS:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+    return _finalize_gamelog_frame(df)
 
-    for col in RAW_GAMELOG_COLUMNS:
-        if col not in df.columns:
-            df[col] = pd.NA
 
-    df = df[list(RAW_GAMELOG_COLUMNS)]
-    df = df.dropna(subset=["PLAYER_ID", "GAME_ID", "GAME_DATE"])
-    df = deduplicate(df)
-    df = df.sort_values("GAME_DATE").reset_index(drop=True)
-    return df
+def gamelogs_to_dataframe(records) -> pd.DataFrame:
+    """
+    Inverse of the canonical-record boundary
+    (src.data.basketball.normalization.dataframe_to_player_game_logs):
+    reconstructs the exact RAW_GAMELOG_COLUMNS-shaped DataFrame this
+    module has always persisted, from a list of
+    src.data.basketball.models.PlayerGameLog records.
+
+    Passes through the same _finalize_gamelog_frame tail that
+    normalize_raw_gamelog uses, so persisted output is identical
+    regardless of whether it came from the raw-nba_api path or the
+    provider/canonical-record path -- this is what makes the Step 6
+    provider refactor safe for the historical collector: this module
+    (storage.py) is the one place that owns RAW_GAMELOG_COLUMNS and both
+    directions of conversion to/from it.
+    """
+    records = list(records)
+    if not records:
+        return pd.DataFrame(columns=RAW_GAMELOG_COLUMNS)
+
+    rows = [
+        {
+            "SEASON": r.season,
+            "SEASON_ID": r.season_id,
+            "PLAYER_ID": r.player_id,
+            "PLAYER_NAME": r.player_name,
+            "GAME_ID": r.game_id,
+            "GAME_DATE": r.game_date,
+            "MATCHUP": r.matchup,
+            "TEAM_ABBREVIATION": r.team_abbreviation,
+            "OPPONENT_ABBREVIATION": r.opponent_abbreviation,
+            "IS_HOME": r.is_home,
+            "WL": r.wl,
+            "MIN": r.minutes,
+            "FGM": r.fgm,
+            "FGA": r.fga,
+            "FG_PCT": r.fg_pct,
+            "FG3M": r.fg3m,
+            "FG3A": r.fg3a,
+            "FG3_PCT": r.fg3_pct,
+            "FTM": r.ftm,
+            "FTA": r.fta,
+            "FT_PCT": r.ft_pct,
+            "OREB": r.oreb,
+            "DREB": r.dreb,
+            "REB": r.reb,
+            "AST": r.ast,
+            "STL": r.stl,
+            "BLK": r.blk,
+            "TOV": r.tov,
+            "PF": r.pf,
+            "PTS": r.points,
+            "PLUS_MINUS": r.plus_minus,
+            "VIDEO_AVAILABLE": r.video_available,
+        }
+        for r in records
+    ]
+    df = pd.DataFrame(rows)
+    return _finalize_gamelog_frame(df)
 
 
 def save_player_gamelog(df: pd.DataFrame, *, season: str, player_id) -> Path:
