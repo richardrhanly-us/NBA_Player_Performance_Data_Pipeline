@@ -541,6 +541,11 @@ def safe_live_display(value, fallback="N/A"):
         return fallback
     return str(value)
 
+def safe_float(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float("nan")
 
 def format_minutes(minutes_str):
     if not minutes_str:
@@ -1110,7 +1115,11 @@ def build_prediction(player_name: str, sportsbook_line: float | None) -> dict[st
 
     actual_name = base_result.player_name
     player_id = base_result.player_id
-    base_predicted_points = base_result.model_projection
+
+    if base_result.model_projection is None:
+        return {"error": "Model did not return a projection."}
+
+    base_predicted_points = float(base_result.model_projection)
     predicted_points = base_predicted_points
 
     points_std = None
@@ -1138,10 +1147,13 @@ def build_prediction(player_name: str, sportsbook_line: float | None) -> dict[st
     except Exception:
         live_stats = None
 
-    live_adjusted_projection = get_live_adjusted_projection(base_predicted_points, live_stats)
+    live_adjusted_projection = get_live_adjusted_projection(
+        base_predicted_points,
+        live_stats,
+    )
 
-    if live_stats:
-        predicted_points = live_adjusted_projection
+    if live_stats and live_adjusted_projection is not None:
+        predicted_points = float(live_adjusted_projection)
 
     over_prob = None
     under_prob = None
@@ -1322,9 +1334,9 @@ if SHOW_LIVE_FEATURES:
 
             top3 = top_plays_df.head(3)
             for _, row in top3.iterrows():
-                edge_val = pd.to_numeric(row.get("edge"), errors="coerce")
-                pred_val = pd.to_numeric(row.get("predicted_points"), errors="coerce")
-                line_val = pd.to_numeric(row.get("sportsbook_line"), errors="coerce")
+                edge_val = safe_float(row.get("edge"))
+                pred_val = safe_float(row.get("predicted_points"))
+                line_val = safe_float(row.get("sportsbook_line"))
                 player_name = row.get("PLAYER_NAME", "Player")
                 pick = row.get("model_pick", "")
                 matchup = f"{row.get('away_team', '')} @ {row.get('home_team', '')}"
