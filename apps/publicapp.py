@@ -63,6 +63,13 @@ from src.services.access_presentation import (
 )
 from src.services.entitlement_service import FREE_HISTORY_MAX_DAYS
 
+# Step 13: billing UI (Upgrade to PRO / Manage Billing) -- this module
+# never imports `stripe` itself; it calls the BillingProvider
+# abstraction (src/services/billing_provider.py) via
+# src/services/billing_session.py, the same separation
+# src/services/auth_session.py established for authentication.
+from src.services.billing_session import render_billing_widget, render_checkout_return_banner
+
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 SHEET_KEY = "1uhjV_Si-qcILfNJbKZrD52y4JnT_GvqQ0hzN7POekQM"
@@ -138,6 +145,7 @@ if "last_logged_search_key" not in st.session_state:
 # see apps/adminapp.py's Users & Access tab).
 current_user = render_account_widget()
 entitlements = current_user.entitlements
+render_billing_widget(current_user)
 
 # True = offseason/historical presentation.
 # False = full original in-season sportsbook/live behavior.
@@ -1283,6 +1291,8 @@ else:
         """,
         unsafe_allow_html=True,
     )
+
+render_checkout_return_banner()
 
 if not st.session_state.page_view_logged:
     write_usage_log(

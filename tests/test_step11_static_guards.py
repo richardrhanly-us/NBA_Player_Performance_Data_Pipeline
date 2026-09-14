@@ -62,28 +62,38 @@ def _all_repo_py_files():
         yield path
 
 
-def test_no_stripe_import_anywhere_in_the_repo():
-    """Phase 8: entitlement logic (and everything else, for now -- billing
-    is not live) must not depend on Stripe-specific objects. No file
-    anywhere imports `stripe` yet; this fails loudly the moment one does,
-    so a future Stripe integration is a deliberate, reviewed addition to
-    src/services/billing_provider.py's BillingProvider implementations,
-    not an accidental import inside entitlement/auth code."""
+STRIPE_IMPORT_ALLOWED_LOCATIONS = ("src/services/billing_provider.py",)
+
+
+def test_no_stripe_import_outside_the_billing_provider_module():
+    """Phase 8 (Step 11) / Step 13: entitlement logic must never depend
+    on Stripe-specific objects. Step 13 added a real StripeBillingProvider
+    -- src/services/billing_provider.py is now the ONE sanctioned
+    location for `import stripe` (see tests/test_step13_static_guards.py
+    for the apps/entitlement_service-specific half of this guard);
+    everywhere else, a `stripe` import is still an error."""
     offenders = []
     for path in _all_repo_py_files():
+        rel = str(path.as_posix())
+        if rel in STRIPE_IMPORT_ALLOWED_LOCATIONS or rel.startswith("tests/"):
+            continue
         try:
             modules = _imported_top_level_modules(path)
         except SyntaxError:
             continue
         if "stripe" in modules:
-            offenders.append(str(path.as_posix()))
+            offenders.append(rel)
     assert offenders == [], f"Unexpected `stripe` import(s) found in: {offenders}"
 
 
-def test_billing_provider_module_has_no_provider_sdk_imports():
+def test_billing_provider_module_imports_stripe_and_nothing_else_unexpected():
+    """Step 13: billing_provider.py is now the sanctioned Stripe
+    integration layer -- it DOES import stripe (a change from Step 11,
+    when billing was entirely unimplemented). It still makes no direct
+    `requests` network calls of its own (Stripe's SDK handles that)."""
     modules = _imported_top_level_modules(Path("src/services/billing_provider.py"))
-    assert "stripe" not in modules
-    assert "requests" not in modules  # NullBillingProvider makes no network calls
+    assert "stripe" in modules
+    assert "requests" not in modules
 
 
 def test_app_pages_do_not_execute_raw_sql_mutations():
@@ -100,7 +110,7 @@ def test_app_pages_do_not_execute_raw_sql_mutations():
     words like "Update" (button labels) and Google Sheets' own
     .update()/.append_row() calls, which are a pre-existing, separate
     data layer (see the Step 11 report's audit)."""
-    accounts_tables = ("USERS", "SUBSCRIPTIONS", "ENTITLEMENT_OVERRIDES")
+    accounts_tables = ("USERS", "SUBSCRIPTIONS", "ENTITLEMENT_OVERRIDES", "STRIPE_EVENTS")
     mutation_keywords = ("INSERT INTO", "UPDATE", "DELETE FROM")
     offenders = []
     for rel_path in APP_FILES:
@@ -185,11 +195,20 @@ def test_public_app_never_writes_accounts_or_subscription_state():
     src/services/auth_session.py's sign-in/sign-up, which only ever
     creates/reads a user's own identity row) -- it must never import the
     accounts repository directly, since every write to subscriptions/
-    entitlement_overrides is an admin-only action in apps/adminapp.py."""
-    modules = _imported_top_level_modules(Path("apps/publicapp.py"))
+    entitlement_overrides is an admin-only action in apps/adminapp.py.
+
+    Step 13 update: publicapp.py DOES now import billing_provider (to
+    call create_checkout_session()/create_customer_portal_session() --
+    the sanctioned abstraction, see src/services/billing_provider.py).
+    That is not a repository bypass: billing_provider.py is the only
+    thing that ever writes to subscriptions, and it does so only in
+    response to a verified Stripe webhook, never from a Checkout/Portal
+    call itself (see tests/test_stripe_billing_provider.py::
+    test_checkout_does_not_write_subscription_state). What must still
+    never happen is publicapp.py reaching around that abstraction
+    straight into accounts_repository."""
     source = Path("apps/publicapp.py").read_text(encoding="utf-8")
     assert "accounts_repository" not in source
-    assert "billing_provider" not in source
 
 
 def test_admin_authorization_gate_runs_unconditionally_before_any_tab():

@@ -131,6 +131,33 @@ def set_user_active(conn, user_id: int, is_active: bool) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Stripe customer mapping (Step 13) -- the stable local-user <-> Stripe
+# Customer identity link. Set ONCE per user (only when currently NULL),
+# never overwritten, and never resolved by email -- see
+# src/services/billing_provider.py, which is the only writer.
+# ---------------------------------------------------------------------------
+
+def get_user_by_stripe_customer_id(conn, stripe_customer_id: str):
+    cur = _execute(
+        conn, "SELECT * FROM users WHERE stripe_customer_id = ?", (stripe_customer_id,)
+    )
+    return _row_to_dict(cur, cur.fetchone())
+
+
+def set_user_stripe_customer_id(conn, user_id: int, stripe_customer_id: str) -> None:
+    """Only takes effect if this user has no Stripe customer id yet --
+    idempotent by construction, so a retried/duplicate checkout attempt
+    can never silently swap a user's mapped customer."""
+    _execute(
+        conn,
+        "UPDATE users SET stripe_customer_id = ?, updated_at = ? "
+        "WHERE id = ? AND stripe_customer_id IS NULL",
+        (stripe_customer_id, _now_iso(), user_id),
+    )
+    conn.commit()
+
+
+# ---------------------------------------------------------------------------
 # subscriptions (reserved for real billing-provider sync -- see
 # src/services/billing_provider.py; nothing in Step 11 writes here in
 # production, but the repository function is provided so a future
@@ -182,6 +209,150 @@ def upsert_subscription(
     )
     conn.commit()
     return sub_id
+
+
+def sync_subscription_from_stripe(
+    conn,
+    *,
+    user_id: int,
+    provider_customer_id: str | None,
+    provider_subscription_id: str,
+    plan_key: str,
+    status: str,
+    current_period_start: str | None,
+    current_period_end: str | None,
+    cancel_at_period_end: bool,
+    stripe_price_id: str | None = None,
+):
+    """
+    The webhook-driven write path (Step 13) -- idempotent by
+    (provider="stripe", provider_subscription_id): updates the existing
+    row in place if one already exists for this Stripe subscription,
+    otherwise inserts a new one. This is what makes repeated webhook
+    delivery for the same subscription a no-op rather than creating
+    duplicate rows (see migrations/0003_..._stripe_events.sql's partial
+    unique index, which backs this at the database level too). Returns
+    the subscription row's id.
+    """
+    now = _now_iso()
+    cur = _execute(
+        conn,
+        "SELECT id FROM subscriptions WHERE provider = ? AND provider_subscription_id = ?",
+        ("stripe", provider_subscription_id),
+    )
+    existing = cur.fetchone()
+
+    if existing is not None:
+        sub_id = existing[0]
+        _execute(
+            conn,
+            "UPDATE subscriptions SET user_id = ?, provider_customer_id = ?, "
+            "plan_key = ?, status = ?, current_period_start = ?, "
+            "current_period_end = ?, cancel_at_period_end = ?, stripe_price_id = ?, "
+            "last_synced_at = ?, updated_at = ? WHERE id = ?",
+            (
+                user_id,
+                provider_customer_id,
+                plan_key,
+                status,
+                current_period_start,
+                current_period_end,
+                cancel_at_period_end,
+                stripe_price_id,
+                now,
+                now,
+                sub_id,
+            ),
+        )
+        conn.commit()
+        return sub_id
+
+    sub_id = _insert_and_get_id(
+        conn,
+        "INSERT INTO subscriptions (user_id, provider, provider_customer_id, "
+        "provider_subscription_id, plan_key, status, current_period_start, "
+        "current_period_end, cancel_at_period_end, stripe_price_id, "
+        "last_synced_at, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            user_id,
+            "stripe",
+            provider_customer_id,
+            provider_subscription_id,
+            plan_key,
+            status,
+            current_period_start,
+            current_period_end,
+            cancel_at_period_end,
+            stripe_price_id,
+            now,
+            now,
+            now,
+        ),
+    )
+    conn.commit()
+    return sub_id
+
+
+# ---------------------------------------------------------------------------
+# stripe_events -- webhook idempotency ledger (Step 13 Phase 14)
+# ---------------------------------------------------------------------------
+
+def try_claim_stripe_event(conn, stripe_event_id: str, event_type: str) -> bool:
+    """
+    Attempts to record a newly-received Stripe event. Returns True if
+    this call is the first to see this event id (i.e. it should be
+    processed), False if it was already recorded (a duplicate delivery
+    -- Stripe retries aggressively, so this MUST be checked before any
+    entitlement-affecting work happens). Relies on stripe_event_id's
+    UNIQUE constraint -- a second INSERT for the same id fails, which is
+    treated as "already claimed" rather than an error.
+    """
+    try:
+        _execute(
+            conn,
+            "INSERT INTO stripe_events (stripe_event_id, event_type, received_at, "
+            "processing_status) VALUES (?, ?, ?, ?)",
+            (stripe_event_id, event_type, _now_iso(), "received"),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return False
+
+
+def mark_stripe_event_processed(conn, stripe_event_id: str) -> None:
+    _execute(
+        conn,
+        "UPDATE stripe_events SET processing_status = ?, processed_at = ? "
+        "WHERE stripe_event_id = ?",
+        ("processed", _now_iso(), stripe_event_id),
+    )
+    conn.commit()
+
+
+def mark_stripe_event_failed(conn, stripe_event_id: str, error_message: str) -> None:
+    """`error_message` must already be a safe-to-store string -- callers
+    (billing_provider.py) never pass a raw exception containing a secret
+    (API keys, webhook secrets) here; only a short, descriptive message."""
+    _execute(
+        conn,
+        "UPDATE stripe_events SET processing_status = ?, processed_at = ?, "
+        "error_message = ? WHERE stripe_event_id = ?",
+        ("failed", _now_iso(), str(error_message)[:2000], stripe_event_id),
+    )
+    conn.commit()
+
+
+def get_stripe_event(conn, stripe_event_id: str):
+    cur = _execute(
+        conn, "SELECT * FROM stripe_events WHERE stripe_event_id = ?", (stripe_event_id,)
+    )
+    return _row_to_dict(cur, cur.fetchone())
 
 
 # ---------------------------------------------------------------------------

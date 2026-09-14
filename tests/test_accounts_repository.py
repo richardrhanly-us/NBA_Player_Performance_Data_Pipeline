@@ -212,3 +212,157 @@ def test_list_users_orders_most_recent_first(accounts_db_conn):
     )
     users = repo.list_users(accounts_db_conn)
     assert len(users) == 2
+
+
+# ---------------------------------------------------------------------------
+# Step 13: Stripe customer mapping / subscription sync / event idempotency
+# ---------------------------------------------------------------------------
+
+def test_new_user_has_no_stripe_customer_id(accounts_db_conn):
+    user = repo.get_or_create_user_by_auth_subject(
+        accounts_db_conn, auth_provider="dev", auth_subject="dev:1", email="x@example.com"
+    )
+    assert user.get("stripe_customer_id") is None
+
+
+def test_set_stripe_customer_id_is_visible_by_lookup(accounts_db_conn):
+    user = repo.get_or_create_user_by_auth_subject(
+        accounts_db_conn, auth_provider="dev", auth_subject="dev:1", email="x@example.com"
+    )
+    repo.set_user_stripe_customer_id(accounts_db_conn, user["id"], "cus_123")
+    found = repo.get_user_by_stripe_customer_id(accounts_db_conn, "cus_123")
+    assert found is not None
+    assert found["id"] == user["id"]
+
+
+def test_set_stripe_customer_id_is_idempotent_once_set(accounts_db_conn):
+    user = repo.get_or_create_user_by_auth_subject(
+        accounts_db_conn, auth_provider="dev", auth_subject="dev:1", email="x@example.com"
+    )
+    repo.set_user_stripe_customer_id(accounts_db_conn, user["id"], "cus_first")
+    repo.set_user_stripe_customer_id(accounts_db_conn, user["id"], "cus_second")
+    reloaded = repo.get_user_by_id(accounts_db_conn, user["id"])
+    assert reloaded["stripe_customer_id"] == "cus_first"
+
+
+def test_unknown_stripe_customer_id_returns_none(accounts_db_conn):
+    assert repo.get_user_by_stripe_customer_id(accounts_db_conn, "cus_does_not_exist") is None
+
+
+def test_sync_subscription_from_stripe_creates_new_row(accounts_db_conn):
+    user = repo.get_or_create_user_by_auth_subject(
+        accounts_db_conn, auth_provider="dev", auth_subject="dev:1", email="x@example.com"
+    )
+    sub_id = repo.sync_subscription_from_stripe(
+        accounts_db_conn,
+        user_id=user["id"],
+        provider_customer_id="cus_123",
+        provider_subscription_id="sub_abc",
+        plan_key="pro",
+        status="active",
+        current_period_start=None,
+        current_period_end=None,
+        cancel_at_period_end=False,
+        stripe_price_id="price_1",
+    )
+    latest = repo.get_latest_subscription(accounts_db_conn, user["id"])
+    assert latest["id"] == sub_id
+    assert latest["status"] == "active"
+    assert latest["stripe_price_id"] == "price_1"
+
+
+def test_sync_subscription_from_stripe_is_idempotent_by_subscription_id(accounts_db_conn):
+    user = repo.get_or_create_user_by_auth_subject(
+        accounts_db_conn, auth_provider="dev", auth_subject="dev:1", email="x@example.com"
+    )
+    first_id = repo.sync_subscription_from_stripe(
+        accounts_db_conn,
+        user_id=user["id"],
+        provider_customer_id="cus_123",
+        provider_subscription_id="sub_abc",
+        plan_key="pro",
+        status="active",
+        current_period_start=None,
+        current_period_end=None,
+        cancel_at_period_end=False,
+    )
+    second_id = repo.sync_subscription_from_stripe(
+        accounts_db_conn,
+        user_id=user["id"],
+        provider_customer_id="cus_123",
+        provider_subscription_id="sub_abc",
+        plan_key="pro",
+        status="past_due",
+        current_period_start=None,
+        current_period_end=None,
+        cancel_at_period_end=False,
+    )
+    assert first_id == second_id
+    all_subs = [
+        s
+        for s in [repo.get_latest_subscription(accounts_db_conn, user["id"])]
+    ]
+    assert len(all_subs) == 1
+    assert all_subs[0]["status"] == "past_due"
+
+
+def test_sync_subscription_from_stripe_different_subscription_ids_create_separate_rows(
+    accounts_db_conn,
+):
+    user = repo.get_or_create_user_by_auth_subject(
+        accounts_db_conn, auth_provider="dev", auth_subject="dev:1", email="x@example.com"
+    )
+    repo.sync_subscription_from_stripe(
+        accounts_db_conn,
+        user_id=user["id"],
+        provider_customer_id="cus_123",
+        provider_subscription_id="sub_old",
+        plan_key="pro",
+        status="canceled",
+        current_period_start=None,
+        current_period_end=None,
+        cancel_at_period_end=False,
+    )
+    repo.sync_subscription_from_stripe(
+        accounts_db_conn,
+        user_id=user["id"],
+        provider_customer_id="cus_123",
+        provider_subscription_id="sub_new",
+        plan_key="pro",
+        status="active",
+        current_period_start=None,
+        current_period_end=None,
+        cancel_at_period_end=False,
+    )
+    latest = repo.get_latest_subscription(accounts_db_conn, user["id"])
+    assert latest["provider_subscription_id"] == "sub_new"
+    assert latest["status"] == "active"
+
+
+def test_try_claim_stripe_event_first_call_succeeds(accounts_db_conn):
+    assert repo.try_claim_stripe_event(accounts_db_conn, "evt_1", "checkout.session.completed") is True
+
+
+def test_try_claim_stripe_event_duplicate_call_fails(accounts_db_conn):
+    repo.try_claim_stripe_event(accounts_db_conn, "evt_1", "checkout.session.completed")
+    assert repo.try_claim_stripe_event(accounts_db_conn, "evt_1", "checkout.session.completed") is False
+
+
+def test_mark_stripe_event_processed(accounts_db_conn):
+    repo.try_claim_stripe_event(accounts_db_conn, "evt_1", "checkout.session.completed")
+    repo.mark_stripe_event_processed(accounts_db_conn, "evt_1")
+    row = repo.get_stripe_event(accounts_db_conn, "evt_1")
+    assert row["processing_status"] == "processed"
+    assert row["processed_at"] is not None
+
+
+def test_mark_stripe_event_failed_records_error_message(accounts_db_conn):
+    repo.try_claim_stripe_event(accounts_db_conn, "evt_1", "checkout.session.completed")
+    repo.mark_stripe_event_failed(accounts_db_conn, "evt_1", "could not resolve user")
+    row = repo.get_stripe_event(accounts_db_conn, "evt_1")
+    assert row["processing_status"] == "failed"
+    assert row["error_message"] == "could not resolve user"
+
+
+def test_get_stripe_event_returns_none_for_unknown_event(accounts_db_conn):
+    assert repo.get_stripe_event(accounts_db_conn, "evt_does_not_exist") is None

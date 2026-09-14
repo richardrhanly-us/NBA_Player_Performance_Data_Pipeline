@@ -95,14 +95,16 @@ def create_sqlite_prediction_schema(conn) -> None:
     conn.commit()
 
 
-# Step 11: SQLite-compatible mirror of
-# migrations/0002_create_accounts_and_entitlements.sql, same rationale as
-# SQLITE_SCHEMA_STATEMENTS above -- no live Postgres/Neon access here or
-# in CI. Kept side-by-side and reviewed together with the real migration;
-# only dialect-specific syntax differs (BIGSERIAL -> INTEGER PRIMARY KEY
-# AUTOINCREMENT, TIMESTAMPTZ ... DEFAULT now() -> TEXT ... DEFAULT
-# (datetime('now'))). If this schema and the real migration ever diverge,
-# keep them in sync whenever one changes.
+# SQLite-compatible mirror of migrations/0002_create_accounts_and_entitlements.sql
+# PLUS migrations/0003_add_billing_fields_and_stripe_events.sql (Step 13) --
+# same rationale as SQLITE_SCHEMA_STATEMENTS above -- no live Postgres/Neon
+# access here or in CI. Kept side-by-side and reviewed together with the
+# real migrations; only dialect-specific syntax differs (BIGSERIAL ->
+# INTEGER PRIMARY KEY AUTOINCREMENT, TIMESTAMPTZ ... DEFAULT now() -> TEXT
+# ... DEFAULT (datetime('now'))). This mirrors the CUMULATIVE end state of
+# both migrations (not one file per migration) -- see create_sqlite_accounts_schema's
+# docstring. If this schema and the real migrations ever diverge, keep
+# them in sync whenever one changes.
 ACCOUNTS_SQLITE_SCHEMA_STATEMENTS = (
     """
     CREATE TABLE IF NOT EXISTS users (
@@ -112,12 +114,14 @@ ACCOUNTS_SQLITE_SCHEMA_STATEMENTS = (
         auth_provider       TEXT NOT NULL,
         auth_subject        TEXT NOT NULL,
         is_active           BOOLEAN NOT NULL DEFAULT 1,
+        stripe_customer_id  TEXT,
         created_at          TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
         UNIQUE (auth_provider, auth_subject)
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_stripe_customer_id ON users(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL",
     """
     CREATE TABLE IF NOT EXISTS subscriptions (
         id                          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,12 +136,15 @@ ACCOUNTS_SQLITE_SCHEMA_STATEMENTS = (
         current_period_start        TEXT,
         current_period_end          TEXT,
         cancel_at_period_end        BOOLEAN NOT NULL DEFAULT 0,
+        stripe_price_id             TEXT,
+        last_synced_at              TEXT,
         created_at                  TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at                  TEXT NOT NULL DEFAULT (datetime('now'))
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_subscriptions_provider_subscription_id ON subscriptions(provider_subscription_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_provider_subscription_unique ON subscriptions(provider, provider_subscription_id) WHERE provider_subscription_id IS NOT NULL",
     """
     CREATE TABLE IF NOT EXISTS entitlement_overrides (
         id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -152,6 +159,20 @@ ACCOUNTS_SQLITE_SCHEMA_STATEMENTS = (
     """,
     "CREATE INDEX IF NOT EXISTS idx_entitlement_overrides_user_id ON entitlement_overrides(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_entitlement_overrides_user_enabled ON entitlement_overrides(user_id, enabled)",
+    """
+    CREATE TABLE IF NOT EXISTS stripe_events (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        stripe_event_id     TEXT NOT NULL UNIQUE,
+        event_type          TEXT NOT NULL,
+        received_at         TEXT NOT NULL DEFAULT (datetime('now')),
+        processed_at        TEXT,
+        processing_status   TEXT NOT NULL DEFAULT 'received' CHECK (
+            processing_status IN ('received', 'processed', 'failed')
+        ),
+        error_message       TEXT
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_stripe_events_status ON stripe_events(processing_status)",
 )
 
 

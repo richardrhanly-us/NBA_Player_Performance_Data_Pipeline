@@ -1673,6 +1673,15 @@ def build_users_overview_rows(conn, users):
                 "override_expires_at": override.get("expires_at") if override else "",
                 "is_active": bool(user["is_active"]),
                 "created_at": user.get("created_at"),
+                # Step 13: billing visibility -- never the raw customer/
+                # subscription id (see the Step 13 report's admin-UI
+                # section), just enough for an admin to see billing
+                # health without exposing Stripe identifiers or secrets.
+                "billing_provider": subscription.get("provider") if subscription else "",
+                "stripe_customer_present": bool(user.get("stripe_customer_id")),
+                "current_period_end": subscription.get("current_period_end") if subscription else "",
+                "cancel_at_period_end": bool(subscription.get("cancel_at_period_end")) if subscription else False,
+                "last_synced_at": subscription.get("last_synced_at") if subscription else "",
             }
         )
     return rows
@@ -1737,6 +1746,24 @@ with users_tab:
                         """,
                         unsafe_allow_html=True,
                     )
+
+                st.markdown(
+                    f"""
+                    <div class="status-box">
+                        <div class="mini-label">Billing (Step 13)</div>
+                        <div><span class="muted">Provider:</span> {selected_row['billing_provider'] or 'None'}</div>
+                        <div><span class="muted">Stripe customer:</span> {"Yes" if selected_row['stripe_customer_present'] else "No"}</div>
+                        <div><span class="muted">Current period end:</span> {format_last_update(selected_row['current_period_end']) if selected_row['current_period_end'] else "N/A"}</div>
+                        <div><span class="muted">Cancel at period end:</span> {"Yes" if selected_row['cancel_at_period_end'] else "No"}</div>
+                        <div><span class="muted">Last synced:</span> {format_last_update(selected_row['last_synced_at']) if selected_row['last_synced_at'] else "Never"}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                st.caption(
+                    "Billing state is written only by the Stripe webhook -- manual PRO access "
+                    "still goes through the override buttons below, independently of Stripe."
+                )
 
                 action_col1, action_col2, action_col3, action_col4 = st.columns(4)
 
