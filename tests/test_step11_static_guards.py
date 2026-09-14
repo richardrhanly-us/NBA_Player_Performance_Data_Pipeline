@@ -32,7 +32,13 @@ ENTITLEMENT_INTERNALS = (
 # The only module allowed to read/write auth-related st.session_state
 # keys, per src/services/auth_session.py's module docstring.
 AUTH_SESSION_OWNER = "src/services/auth_session.py"
-AUTH_SESSION_KEYS = ("_auth_session", "_legacy_admin_ok")
+AUTH_SESSION_KEYS = (
+    "_auth_session",
+    "_legacy_admin_ok",
+    # Step 12 additions -- session-expiry/signup-notice one-shot flags.
+    "_auth_session_expired",
+    "_auth_signup_notice",
+)
 
 
 def _imported_top_level_modules(path: Path) -> set:

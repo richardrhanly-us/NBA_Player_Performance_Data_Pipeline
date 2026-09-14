@@ -11,9 +11,12 @@ behavior: statically.
 
 DevAuthProvider is used throughout instead of Supabase -- it needs no
 network and is exactly what runs in this test environment (no
-SUPABASE_URL/SUPABASE_ANON_KEY configured), which is itself the
-"external provider secrets not available" dev-fallback path Step 11
-was asked to support.
+SUPABASE_URL/SUPABASE_ANON_KEY configured). Step 12 made dev auth an
+explicit opt-in rather than an implicit fallback (see
+tests/test_auth_providers.py and tests/test_step12_*), so this module's
+fixture now sets DEV_AUTH_ENABLED=true itself -- these tests are about
+session/entitlement behavior, not about the fail-closed gate, which has
+its own dedicated tests.
 """
 
 from pathlib import Path
@@ -43,9 +46,14 @@ class _NonClosingConn:
 
 @pytest.fixture(autouse=True)
 def _clean_auth_session_state(monkeypatch):
-    # Never talk to a real Supabase project from this test module.
+    # Never talk to a real Supabase project from this test module, and
+    # explicitly opt into dev auth (Step 12 no longer does this
+    # implicitly -- see module docstring).
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
+    monkeypatch.setenv("DEV_AUTH_ENABLED", "true")
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+    monkeypatch.delenv("APP_ENV", raising=False)
     st.session_state["_auth_session"] = None
     st.session_state.pop("_legacy_admin_ok", None)
     yield
