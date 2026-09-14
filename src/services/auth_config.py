@@ -63,23 +63,43 @@ def _streamlit_secret(name: str) -> str | None:
     try:
         import streamlit as st
 
+        exists = name in st.secrets
+        print(f"[AUTH DEBUG] st.secrets contains {name}: {exists}")
+
+        if not exists:
+            return None
+
         value = st.secrets.get(name)
+        print(f"[AUTH DEBUG] st.secrets {name} has value: {bool(value)}")
+
         if value:
             return str(value)
-    except Exception:
-        pass
+
+    except Exception as exc:
+        print(
+            f"[AUTH DEBUG] st.secrets lookup failed for {name}: "
+            f"{type(exc).__name__}"
+        )
 
     return None
 
 
 def supabase_url() -> str | None:
-    return os.environ.get("SUPABASE_URL") or _streamlit_secret("SUPABASE_URL")
+    env_value = os.environ.get("SUPABASE_URL")
+    print(f"[AUTH DEBUG] env SUPABASE_URL present: {bool(env_value)}")
+
+    value = env_value or _streamlit_secret("SUPABASE_URL")
+    print(f"[AUTH DEBUG] final SUPABASE_URL present: {bool(value)}")
+    return value
 
 
 def supabase_anon_key() -> str | None:
-    return os.environ.get("SUPABASE_ANON_KEY") or _streamlit_secret(
-        "SUPABASE_ANON_KEY"
-    )
+    env_value = os.environ.get("SUPABASE_ANON_KEY")
+    print(f"[AUTH DEBUG] env SUPABASE_ANON_KEY present: {bool(env_value)}")
+
+    value = env_value or _streamlit_secret("SUPABASE_ANON_KEY")
+    print(f"[AUTH DEBUG] final SUPABASE_ANON_KEY present: {bool(value)}")
+    return value
 
 
 def is_supabase_configured() -> bool:
