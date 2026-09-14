@@ -3,7 +3,7 @@ import os
 import time
 import pandas as pd
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 from zoneinfo import ZoneInfo
 from google.oauth2.service_account import Credentials
@@ -27,6 +27,14 @@ from src.shared_app import (
     load_active_players,
     get_scoreboard_for_date,
 )
+
+# Step 11: centralized ADMIN authorization + accounts/entitlements. See
+# src/services/auth_session.py's module docstring -- this is the only
+# file allowed to read the admin_key secret or auth-related
+# session_state keys; apps/adminapp.py must go through these functions
+# rather than checking st.secrets/session_state itself.
+from src.services import accounts_repository
+from src.services.auth_session import authorize_admin_or_legacy_key, audit_source_label
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 SHEET_KEY = "1uhjV_Si-qcILfNJbKZrD52y4JnT_GvqQ0hzN7POekQM"
@@ -555,26 +563,27 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-with st.expander("Admin Login", expanded=True):
-    admin_mode = False
-    admin_key_input = st.text_input("Enter admin key", type="password", key="admin_key_input")
+# Step 11: centralized ADMIN authorization. Prefers a real authenticated
+# ADMIN session (see src/services/auth_session.py); falls back to the
+# legacy shared admin_key only as a bootstrap mechanism, and only when
+# one is configured. Neither path trusts query params, session_state
+# booleans set elsewhere, or email alone -- see
+# authorize_admin_or_legacy_key()'s docstring for the full reasoning.
+current_admin = authorize_admin_or_legacy_key()
 
-    if admin_key_input == st.secrets["admin_key"]:
-        admin_mode = True
-        st.success("Admin mode enabled")
-    elif admin_key_input:
-        st.error("Invalid admin key")
-
-if not admin_mode:
+if current_admin is None:
     st.stop()
 
+st.caption(f"Signed in as: {current_admin.display_label} ({audit_source_label(current_admin)})")
 
-overview_tab, operations_tab, logs_tab, usage_tab, review_tab = st.tabs([
+
+overview_tab, operations_tab, logs_tab, usage_tab, review_tab, users_tab = st.tabs([
     "Overview",
     "Operations",
     "Logs",
     "Usage",
     "Data Review",
+    "Users & Access",
 ])
 
 
@@ -779,7 +788,7 @@ with operations_tab:
 
                 write_admin_log(
                     action="update_final_results",
-                    source="admin_manual",
+                    source=audit_source_label(current_admin),
                     status="success",
                     details=(
                         f"Source {debug_result.get('source_sheet', 'unknown')} | "
@@ -803,7 +812,7 @@ with operations_tab:
             except Exception as e:
                 write_admin_log(
                     action="update_final_results",
-                    source="admin_manual",
+                    source=audit_source_label(current_admin),
                     status="failed",
                     details=str(e)
                 )
@@ -818,7 +827,7 @@ with operations_tab:
 
                 write_admin_log(
                     action="retry_pending_results",
-                    source="admin_manual",
+                    source=audit_source_label(current_admin),
                     status="success",
                     details=(
                         f"Source {debug_result.get('source_sheet', 'unknown')} | "
@@ -841,7 +850,7 @@ with operations_tab:
             except Exception as e:
                 write_admin_log(
                     action="retry_pending_results",
-                    source="admin_manual",
+                    source=audit_source_label(current_admin),
                     status="failed",
                     details=str(e)
                 )
@@ -861,7 +870,7 @@ with operations_tab:
     
                     write_admin_log(
                         action="rebuild_top_plays_live",
-                        source="admin_manual",
+                        source=audit_source_label(current_admin),
                         status="success",
                         details="Manual rebuild ran successfully, but no qualifying top plays were found."
                     )
@@ -899,7 +908,7 @@ with operations_tab:
     
                     write_admin_log(
                         action="rebuild_top_plays_live",
-                        source="admin_manual",
+                        source=audit_source_label(current_admin),
                         status="success",
                         details=f"Manual rebuild completed and wrote {len(output_df)} rows to Top Plays Live."
                     )
@@ -909,7 +918,7 @@ with operations_tab:
             except Exception as e:
                 write_admin_log(
                     action="rebuild_top_plays_live",
-                    source="admin_manual",
+                    source=audit_source_label(current_admin),
                     status="failed",
                     details=str(e)
                 )
@@ -925,7 +934,7 @@ with operations_tab:
 
                 write_admin_log(
                     action="refresh_app_state",
-                    source="admin_manual",
+                    source=audit_source_label(current_admin),
                     status="success",
                     details="Cache cleared and app rerun triggered."
                 )
@@ -936,7 +945,7 @@ with operations_tab:
             except Exception as e:
                 write_admin_log(
                     action="refresh_app_state",
-                    source="admin_manual",
+                    source=audit_source_label(current_admin),
                     status="failed",
                     details=str(e)
                 )
@@ -1289,7 +1298,7 @@ with operations_tab:
             st.cache_resource.clear()
             write_admin_log(
                 action="manual_queue_load",
-                source="admin_manual",
+                source=audit_source_label(current_admin),
                 status="success" if not failed_items else "partial",
                 details=(
                     f"Queued load finished | loaded={loaded_count} | "
@@ -1390,7 +1399,7 @@ with logs_tab:
     if st.button("Test Admin Log"):
         write_admin_log(
             action="test_log",
-            source="admin_manual",
+            source=audit_source_label(current_admin),
             status="success",
             details="Test button clicked"
         )
@@ -1615,5 +1624,219 @@ with review_tab:
 
         except Exception as e:
             st.error(f"Could not build top plays board: {e}")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------------
+# Step 11: Users & Access -- accounts/entitlements administration.
+#
+# All reads/writes below go through src/services/accounts_repository.py
+# and src/services/entitlement_service.py -- no raw SQL here (see
+# tests/test_step11_static_guards.py). Every mutation is logged via the
+# existing write_admin_log() mechanism, tagged with audit_source_label()
+# so a legacy-key bootstrap action is always distinguishable from a real
+# authenticated admin's action.
+# ---------------------------------------------------------------------------
+
+def get_accounts_db_connection_or_none():
+    if not os.environ.get("DATABASE_URL"):
+        return None
+    try:
+        from src.services.db_connection import get_prediction_db_connection
+
+        return get_prediction_db_connection()
+    except Exception:
+        return None
+
+
+def build_users_overview_rows(conn, users):
+    from src.services import entitlement_service
+
+    rows = []
+    for user in users:
+        subscription = accounts_repository.get_latest_subscription(conn, user["id"])
+        override = accounts_repository.get_active_override(conn, user["id"])
+        tier = entitlement_service.compute_effective_tier(
+            user=user, subscription=subscription, active_override=override
+        )
+        rows.append(
+            {
+                "id": user["id"],
+                "email": user["email"],
+                "display_name": user.get("display_name") or "",
+                "auth_provider": user["auth_provider"],
+                "effective_tier": tier.value,
+                "plan_key": subscription.get("plan_key") if subscription else "",
+                "subscription_status": subscription.get("status") if subscription else "",
+                "override_tier": override.get("override_tier") if override else "",
+                "override_expires_at": override.get("expires_at") if override else "",
+                "is_active": bool(user["is_active"]),
+                "created_at": user.get("created_at"),
+            }
+        )
+    return rows
+
+
+with users_tab:
+    st.markdown('<div class="section-card"><div class="section-title">Users &amp; Access</div>', unsafe_allow_html=True)
+
+    accounts_conn = get_accounts_db_connection_or_none()
+
+    if accounts_conn is None:
+        st.info("Accounts/entitlements are unavailable: no DATABASE_URL configured, or the accounts schema has not been migrated yet (run scripts/apply_prediction_history_migrations.py).")
+    else:
+        try:
+            users = accounts_repository.list_users(accounts_conn)
+            overview_rows = build_users_overview_rows(accounts_conn, users)
+
+            if not overview_rows:
+                st.info("No user accounts yet -- accounts are created automatically the first time someone signs in.")
+            else:
+                st.dataframe(pd.DataFrame(overview_rows), use_container_width=True, hide_index=True, height=320)
+
+                st.markdown("#### Manage a User")
+
+                user_labels = {
+                    f"{row['email']} (id={row['id']}, tier={row['effective_tier']})": row["id"]
+                    for row in overview_rows
+                }
+                selected_label = st.selectbox(
+                    "Select a user", options=list(user_labels.keys()), key="users_tab_selected_user"
+                )
+                selected_user_id = user_labels[selected_label]
+                selected_row = next(r for r in overview_rows if r["id"] == selected_user_id)
+
+                detail_col1, detail_col2 = st.columns(2)
+                with detail_col1:
+                    st.markdown(
+                        f"""
+                        <div class="status-box">
+                            <div><span class="muted">Email:</span> {selected_row['email']}</div>
+                            <div><span class="muted">Display name:</span> {selected_row['display_name'] or 'N/A'}</div>
+                            <div><span class="muted">User ID:</span> {selected_row['id']}</div>
+                            <div><span class="muted">Auth provider:</span> {selected_row['auth_provider']}</div>
+                            <div><span class="muted">Created:</span> {format_last_update(selected_row['created_at'])}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                with detail_col2:
+                    st.markdown(
+                        f"""
+                        <div class="status-box">
+                            <div><span class="muted">Effective tier:</span> {selected_row['effective_tier']}</div>
+                            <div><span class="muted">Subscription plan:</span> {selected_row['plan_key'] or 'None'}</div>
+                            <div><span class="muted">Subscription status:</span> {selected_row['subscription_status'] or 'None'}</div>
+                            <div><span class="muted">Active override:</span> {selected_row['override_tier'] or 'None'}
+                                {f"(expires {selected_row['override_expires_at']})" if selected_row['override_tier'] and selected_row['override_expires_at'] else ""}
+                                {"(permanent)" if selected_row['override_tier'] and not selected_row['override_expires_at'] else ""}
+                            </div>
+                            <div><span class="muted">Account status:</span> {"Active" if selected_row['is_active'] else "DISABLED"}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                action_col1, action_col2, action_col3, action_col4 = st.columns(4)
+
+                with action_col1:
+                    duration_choice = st.selectbox(
+                        "Temporary PRO duration",
+                        ["24 hours", "7 days", "30 days"],
+                        key="users_tab_pro_duration",
+                    )
+                    if st.button("Grant Temporary PRO", use_container_width=True, key="users_tab_grant_temp_pro"):
+                        hours = {"24 hours": 24, "7 days": 24 * 7, "30 days": 24 * 30}[duration_choice]
+                        expires_at = (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat()
+                        accounts_repository.create_override(
+                            accounts_conn,
+                            user_id=selected_user_id,
+                            override_tier="PRO",
+                            reason=f"admin grant: temporary PRO ({duration_choice})",
+                            created_by=audit_source_label(current_admin),
+                            expires_at=expires_at,
+                        )
+                        write_admin_log(
+                            action="grant_pro_override",
+                            source=audit_source_label(current_admin),
+                            status="success",
+                            details=f"user_id={selected_user_id} email={selected_row['email']} duration={duration_choice} expires_at={expires_at}",
+                        )
+                        st.success(f"Granted temporary PRO to {selected_row['email']} until {expires_at}.")
+                        st.rerun()
+
+                with action_col2:
+                    if st.button("Grant Permanent PRO", use_container_width=True, key="users_tab_grant_permanent_pro"):
+                        accounts_repository.create_override(
+                            accounts_conn,
+                            user_id=selected_user_id,
+                            override_tier="PRO",
+                            reason="admin grant: permanent PRO",
+                            created_by=audit_source_label(current_admin),
+                            expires_at=None,
+                        )
+                        write_admin_log(
+                            action="grant_pro_override",
+                            source=audit_source_label(current_admin),
+                            status="success",
+                            details=f"user_id={selected_user_id} email={selected_row['email']} duration=permanent",
+                        )
+                        st.success(f"Granted permanent PRO to {selected_row['email']}.")
+                        st.rerun()
+
+                with action_col3:
+                    revoke_disabled = not selected_row["override_tier"]
+                    if st.button(
+                        "Revoke Override",
+                        use_container_width=True,
+                        key="users_tab_revoke_override",
+                        disabled=revoke_disabled,
+                    ):
+                        active_override = accounts_repository.get_active_override(accounts_conn, selected_user_id)
+                        if active_override is not None:
+                            accounts_repository.revoke_override(accounts_conn, active_override["id"])
+                            write_admin_log(
+                                action="revoke_pro_override",
+                                source=audit_source_label(current_admin),
+                                status="success",
+                                details=f"user_id={selected_user_id} email={selected_row['email']}",
+                            )
+                            st.success(f"Revoked override for {selected_row['email']}.")
+                            st.rerun()
+
+                with action_col4:
+                    if selected_row["is_active"]:
+                        if st.button("Disable Account", use_container_width=True, key="users_tab_disable"):
+                            accounts_repository.set_user_active(accounts_conn, selected_user_id, False)
+                            write_admin_log(
+                                action="disable_user",
+                                source=audit_source_label(current_admin),
+                                status="success",
+                                details=f"user_id={selected_user_id} email={selected_row['email']}",
+                            )
+                            st.success(f"Disabled {selected_row['email']}.")
+                            st.rerun()
+                    else:
+                        if st.button("Reactivate Account", use_container_width=True, key="users_tab_reactivate"):
+                            accounts_repository.set_user_active(accounts_conn, selected_user_id, True)
+                            write_admin_log(
+                                action="reactivate_user",
+                                source=audit_source_label(current_admin),
+                                status="success",
+                                details=f"user_id={selected_user_id} email={selected_row['email']}",
+                            )
+                            st.success(f"Reactivated {selected_row['email']}.")
+                            st.rerun()
+
+                st.caption(
+                    "Overrides are never deleted -- revoking sets them to disabled so the "
+                    "grant/revoke history stays auditable. At most one override is active "
+                    "per user at a time."
+                )
+        except Exception as e:
+            st.error(f"Could not load Users & Access: {e}")
+        finally:
+            accounts_conn.close()
 
     st.markdown("</div>", unsafe_allow_html=True)

@@ -48,6 +48,21 @@ import src.shared_app as _shared_app
 
 get_team_game_info = getattr(_shared_app, "get_team_game_info", None)
 
+# Step 11: accounts/entitlements. The board/history are still built
+# exactly once regardless of tier (see get_daily_prediction_board_cached/
+# get_prediction_history_cached below, both unchanged from Step 8/9) --
+# these only ever gate/truncate an already-built result. Truncation
+# itself lives in src/services/access_presentation.py (unit-tested
+# without Streamlit) so it is enforced the same way regardless of which
+# widgets happen to be shown -- see that module's docstring.
+from src.services.auth_session import render_account_widget
+from src.services.access_presentation import (
+    clamp_history_start_date,
+    limit_edge_board_rows,
+    limit_history_rows,
+)
+from src.services.entitlement_service import FREE_HISTORY_MAX_DAYS
+
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 SHEET_KEY = "1uhjV_Si-qcILfNJbKZrD52y4JnT_GvqQ0hzN7POekQM"
@@ -112,6 +127,17 @@ if "top_play_click_logged" not in st.session_state:
 
 if "last_logged_search_key" not in st.session_state:
     st.session_state.last_logged_search_key = None
+
+# Step 11: the one account/entitlement resolution point for this page --
+# everything below reads `current_user.entitlements`, never a raw plan
+# string or session_state auth key. No new persistence side effects and
+# no subscription mutation happen from this (or any) public-app code
+# path -- sign-in/sign-up/sign-out are the only writes, and those go to
+# the identity provider + users table via src/services/auth_session.py,
+# never to subscriptions/entitlement_overrides (those are admin-only,
+# see apps/adminapp.py's Users & Access tab).
+current_user = render_account_widget()
+entitlements = current_user.entitlements
 
 # True = offseason/historical presentation.
 # False = full original in-season sportsbook/live behavior.
@@ -1544,6 +1570,21 @@ try:
                     }
                     for r in ok_predictions
                 ]
+
+                # PRO/ADMIN only: filter to qualified edges. The control
+                # itself is only rendered for entitled sessions, but the
+                # underlying row-count truncation below is enforced
+                # regardless of which widgets are shown (see
+                # src/services/access_presentation.py).
+                if entitlements.can_view_qualified_edges:
+                    qualified_only_board = st.checkbox(
+                        "Show qualified edges only", key="edge_board_qualified_only"
+                    )
+                    if qualified_only_board:
+                        board_rows = [r for r in board_rows if r["Qualified"] == "Yes"]
+
+                board_rows, board_truncated = limit_edge_board_rows(board_rows, entitlements)
+
                 board_df = pd.DataFrame(board_rows)
 
                 def _edge_row_color(row):
@@ -1567,6 +1608,19 @@ try:
                     f"(±{EDGE_THRESHOLD:.1f}). This is an analytical projection, "
                     "not a guarantee."
                 )
+                if board_truncated:
+                    st.caption(
+                        f"Showing {len(board_rows)} of {len(ok_predictions)} rows. "
+                        "Upgrade to PRO for the full Edge Board."
+                    )
+                if entitlements.can_export_data:
+                    st.download_button(
+                        "Download Edge Board (CSV)",
+                        data=board_df.to_csv(index=False),
+                        file_name="edge_board.csv",
+                        mime="text/csv",
+                        key="edge_board_download",
+                    )
 
             if other_predictions:
                 with st.expander(f"{len(other_predictions)} player(s) unavailable today"):
@@ -1608,11 +1662,16 @@ try:
                 "Lean", ["All", "OVER", "UNDER"], key="history_direction"
             )
         with hist_col3:
-            qualified_choice = st.selectbox(
-                "Edge",
-                ["All predictions", f"Qualified only (±{EDGE_THRESHOLD:.1f}+)"],
-                key="history_qualified",
-            )
+            if entitlements.can_view_qualified_edges:
+                qualified_choice = st.selectbox(
+                    "Edge",
+                    ["All predictions", f"Qualified only (±{EDGE_THRESHOLD:.1f}+)"],
+                    key="history_qualified",
+                )
+            else:
+                st.markdown("Edge")
+                st.caption("Qualified-only filtering is a PRO feature.")
+                qualified_choice = "All predictions"
         with hist_col4:
             result_choice = st.selectbox(
                 "Result", ["All", "WIN", "LOSS", "PUSH"], key="history_result"
@@ -1624,11 +1683,17 @@ try:
             "Last 90 days": 90,
             "All time": None,
         }[date_range_choice]
-        history_start_date = (
+        requested_history_start_date = (
             (datetime.now(timezone.utc) - timedelta(days=_range_days)).isoformat()
             if _range_days is not None
             else None
         )
+        # Enforced server-side regardless of what the date-range widget
+        # above is set to -- see src/services/access_presentation.py.
+        history_start_date = clamp_history_start_date(
+            entitlements, requested_history_start_date
+        )
+        history_window_clamped = history_start_date != requested_history_start_date
         history_direction = None if direction_choice == "All" else direction_choice
         history_qualified_only = qualified_choice.startswith("Qualified")
 
@@ -1651,31 +1716,46 @@ try:
                 win_rate_pct = (
                     f"{summary.win_rate * 100:.1f}%" if summary.win_rate is not None else "—"
                 )
-                qualified_record = (
-                    f"{summary.qualified_wins}-{summary.qualified_losses}-"
-                    f"{summary.qualified_pushes}"
-                )
-                qualified_win_rate_pct = (
-                    f"{summary.qualified_win_rate * 100:.1f}%"
-                    if summary.qualified_win_rate is not None
-                    else "—"
-                )
 
-                metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+                if entitlements.can_view_advanced_metrics:
+                    qualified_record = (
+                        f"{summary.qualified_wins}-{summary.qualified_losses}-"
+                        f"{summary.qualified_pushes}"
+                    )
+                    qualified_win_rate_pct = (
+                        f"{summary.qualified_win_rate * 100:.1f}%"
+                        if summary.qualified_win_rate is not None
+                        else "—"
+                    )
+                    metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+                    metric_col4.metric(
+                        "Qualified Win Rate",
+                        qualified_win_rate_pct,
+                        help=f"Qualified record: {qualified_record}",
+                    )
+                else:
+                    metric_col1, metric_col2, metric_col3 = st.columns(3)
+
                 metric_col1.metric("Predictions Graded", summary.graded)
                 metric_col2.metric("Record (W-L-P)", record)
                 metric_col3.metric("Win Rate", win_rate_pct)
-                metric_col4.metric(
-                    "Qualified Win Rate",
-                    qualified_win_rate_pct,
-                    help=f"Qualified record: {qualified_record}",
-                )
+                if not entitlements.can_view_advanced_metrics:
+                    st.caption("Upgrade to PRO for the qualified-edge win-rate breakdown.")
 
                 st.caption(
                     "Win rate excludes pushes from the denominator; unsettled "
                     f"(pending) predictions are excluded entirely. \"Qualified\" means "
                     f"|edge| ≥ {EDGE_THRESHOLD:.1f}, the site's existing edge "
                     "threshold -- these results do not change that threshold."
+                )
+                if history_window_clamped:
+                    st.caption(
+                        f"History window limited to the last {FREE_HISTORY_MAX_DAYS} days. "
+                        "Upgrade to PRO for full prediction history."
+                    )
+
+                settled_rows, history_rows_truncated = limit_history_rows(
+                    settled_rows, entitlements
                 )
 
                 history_table_rows = [
@@ -1706,13 +1786,20 @@ try:
                 if not history_table_rows:
                     st.info("No settled predictions match this result filter.")
                 else:
-                    st.dataframe(
-                        pd.DataFrame(history_table_rows),
-                        use_container_width=True,
-                        hide_index=True,
-                    )
+                    history_df = pd.DataFrame(history_table_rows)
+                    st.dataframe(history_df, use_container_width=True, hide_index=True)
                     if len(settled_rows) > 100:
                         st.caption(f"Showing the most recent 100 of {len(settled_rows)} settled predictions.")
+                    if history_rows_truncated:
+                        st.caption("Upgrade to PRO to see your full prediction history.")
+                    if entitlements.can_export_data:
+                        st.download_button(
+                            "Download Prediction History (CSV)",
+                            data=history_df.to_csv(index=False),
+                            file_name="prediction_history.csv",
+                            mime="text/csv",
+                            key="history_download",
+                        )
 
                 st.caption(
                     "Values shown are snapshots captured at prediction time -- "

@@ -1,0 +1,259 @@
+"""
+Step 11: the accounts/entitlements repository -- users, subscriptions,
+and entitlement_overrides (migrations/0002_create_accounts_and_entitlements.sql).
+
+Follows the same conventions as src/services/prediction_repository.py:
+every function takes an explicit `conn` (a real psycopg/Postgres
+connection via src/services/db_connection.py, or a sqlite3 connection
+built from src/services/schema_sqlite.py::create_sqlite_accounts_schema
+in tests), SQL is written once with `?` placeholders and translated to
+`%s` for psycopg connections, and rows come back as plain dicts.
+
+This module is the ONLY place that writes to users/subscriptions/
+entitlement_overrides. Streamlit pages (apps/adminapp.py) call these
+functions rather than executing SQL directly -- see the Step 11 report's
+architectural-guards section (tests/test_step11_static_guards.py).
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+
+def _is_postgres(conn) -> bool:
+    return type(conn).__module__.startswith("psycopg")
+
+
+def _ph(conn) -> str:
+    return "%s" if _is_postgres(conn) else "?"
+
+
+def _execute(conn, sql: str, params=()):
+    placeholder = _ph(conn)
+    adapted_sql = sql.replace("?", placeholder) if placeholder != "?" else sql
+    cur = conn.cursor()
+    cur.execute(adapted_sql, params)
+    return cur
+
+
+def _insert_and_get_id(conn, sql: str, params: tuple):
+    if _is_postgres(conn):
+        cur = _execute(conn, sql + " RETURNING id", params)
+        return cur.fetchone()[0]
+    cur = _execute(conn, sql, params)
+    return cur.lastrowid
+
+
+def _row_to_dict(cur, row):
+    if row is None:
+        return None
+    columns = [d[0] for d in cur.description]
+    return dict(zip(columns, row))
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+# ---------------------------------------------------------------------------
+# users
+# ---------------------------------------------------------------------------
+
+def get_user_by_auth_subject(conn, auth_provider: str, auth_subject: str):
+    cur = _execute(
+        conn,
+        "SELECT * FROM users WHERE auth_provider = ? AND auth_subject = ?",
+        (auth_provider, auth_subject),
+    )
+    return _row_to_dict(cur, cur.fetchone())
+
+
+def get_user_by_id(conn, user_id: int):
+    cur = _execute(conn, "SELECT * FROM users WHERE id = ?", (user_id,))
+    return _row_to_dict(cur, cur.fetchone())
+
+
+def get_or_create_user_by_auth_subject(
+    conn,
+    *,
+    auth_provider: str,
+    auth_subject: str,
+    email: str,
+    display_name: str | None = None,
+):
+    """
+    Idempotent identity resolution for a freshly-authenticated session:
+    returns the existing users row for (auth_provider, auth_subject) if
+    one exists (refreshing email/display_name if they changed upstream),
+    otherwise creates one as FREE-by-default (tier is never stored on
+    this row directly -- see EntitlementService; a brand-new account has
+    no subscription and no override, which computes to FREE).
+    """
+    existing = get_user_by_auth_subject(conn, auth_provider, auth_subject)
+    now = _now_iso()
+
+    if existing is not None:
+        if existing["email"] != email or existing.get("display_name") != display_name:
+            _execute(
+                conn,
+                "UPDATE users SET email = ?, display_name = ?, updated_at = ? WHERE id = ?",
+                (email, display_name, now, existing["id"]),
+            )
+            conn.commit()
+            return get_user_by_id(conn, existing["id"])
+        return existing
+
+    user_id = _insert_and_get_id(
+        conn,
+        "INSERT INTO users (email, display_name, auth_provider, auth_subject, "
+        "is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (email, display_name, auth_provider, auth_subject, True, now, now),
+    )
+    conn.commit()
+    return get_user_by_id(conn, user_id)
+
+
+def list_users(conn, *, limit: int = 200):
+    cur = _execute(
+        conn, "SELECT * FROM users ORDER BY created_at DESC LIMIT ?", (limit,)
+    )
+    columns = [d[0] for d in cur.description]
+    return [dict(zip(columns, row)) for row in cur.fetchall()]
+
+
+def set_user_active(conn, user_id: int, is_active: bool) -> None:
+    _execute(
+        conn,
+        "UPDATE users SET is_active = ?, updated_at = ? WHERE id = ?",
+        (is_active, _now_iso(), user_id),
+    )
+    conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# subscriptions (reserved for real billing-provider sync -- see
+# src/services/billing_provider.py; nothing in Step 11 writes here in
+# production, but the repository function is provided so a future
+# billing sync has a stable, tested write path from day one)
+# ---------------------------------------------------------------------------
+
+def get_latest_subscription(conn, user_id: int):
+    cur = _execute(
+        conn,
+        "SELECT * FROM subscriptions WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+        (user_id,),
+    )
+    return _row_to_dict(cur, cur.fetchone())
+
+
+def upsert_subscription(
+    conn,
+    *,
+    user_id: int,
+    provider: str,
+    plan_key: str,
+    status: str,
+    provider_customer_id: str | None = None,
+    provider_subscription_id: str | None = None,
+    current_period_start: str | None = None,
+    current_period_end: str | None = None,
+    cancel_at_period_end: bool = False,
+):
+    now = _now_iso()
+    sub_id = _insert_and_get_id(
+        conn,
+        "INSERT INTO subscriptions (user_id, provider, provider_customer_id, "
+        "provider_subscription_id, plan_key, status, current_period_start, "
+        "current_period_end, cancel_at_period_end, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            user_id,
+            provider,
+            provider_customer_id,
+            provider_subscription_id,
+            plan_key,
+            status,
+            current_period_start,
+            current_period_end,
+            cancel_at_period_end,
+            now,
+            now,
+        ),
+    )
+    conn.commit()
+    return sub_id
+
+
+# ---------------------------------------------------------------------------
+# entitlement_overrides
+# ---------------------------------------------------------------------------
+
+def get_active_override(conn, user_id: int, *, now: str | None = None):
+    """The single enabled, non-expired override for this user (if any).
+    expires_at IS NULL means permanent. String comparison works for both
+    Postgres TIMESTAMPTZ (cast to text on read by the driver only when
+    compared as text -- but here we always compare in Python against ISO
+    8601 UTC strings, which sort/compare correctly lexicographically)."""
+    now = now or _now_iso()
+    cur = _execute(
+        conn,
+        "SELECT * FROM entitlement_overrides WHERE user_id = ? AND enabled = ? "
+        "ORDER BY id DESC LIMIT 1",
+        (user_id, True),
+    )
+    row = _row_to_dict(cur, cur.fetchone())
+    if row is None:
+        return None
+    expires_at = row.get("expires_at")
+    if expires_at is not None and str(expires_at) < now:
+        return None
+    return row
+
+
+def list_overrides_for_user(conn, user_id: int):
+    cur = _execute(
+        conn,
+        "SELECT * FROM entitlement_overrides WHERE user_id = ? ORDER BY id DESC",
+        (user_id,),
+    )
+    columns = [d[0] for d in cur.description]
+    return [dict(zip(columns, row)) for row in cur.fetchall()]
+
+
+def create_override(
+    conn,
+    *,
+    user_id: int,
+    override_tier: str,
+    reason: str | None,
+    created_by: str | None,
+    expires_at: str | None = None,
+):
+    """
+    Disables any currently-enabled override for this user, then inserts
+    the new one -- at most one ENABLED override per user at a time (an
+    application-level invariant, see the migration's docstring). Returns
+    the new override's id.
+    """
+    _execute(
+        conn,
+        "UPDATE entitlement_overrides SET enabled = ? WHERE user_id = ? AND enabled = ?",
+        (False, user_id, True),
+    )
+    override_id = _insert_and_get_id(
+        conn,
+        "INSERT INTO entitlement_overrides (user_id, override_tier, enabled, "
+        "reason, expires_at, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (user_id, override_tier, True, reason, expires_at, created_by, _now_iso()),
+    )
+    conn.commit()
+    return override_id
+
+
+def revoke_override(conn, override_id: int) -> None:
+    _execute(
+        conn,
+        "UPDATE entitlement_overrides SET enabled = ? WHERE id = ?",
+        (False, override_id),
+    )
+    conn.commit()

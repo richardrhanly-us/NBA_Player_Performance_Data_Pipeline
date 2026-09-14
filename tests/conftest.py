@@ -13,7 +13,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.services.schema_sqlite import create_sqlite_prediction_schema
+from src.services.schema_sqlite import (
+    create_sqlite_accounts_schema,
+    create_sqlite_prediction_schema,
+)
 
 
 @pytest.fixture
@@ -24,6 +27,18 @@ def db_conn():
     enforcement (UNIQUE, CHECK, FOREIGN KEY), fully offline."""
     conn = sqlite3.connect(":memory:")
     create_sqlite_prediction_schema(conn)
+    yield conn
+    conn.close()
+
+
+@pytest.fixture
+def accounts_db_conn():
+    """A fresh, isolated in-memory SQLite connection with the Step 11
+    accounts schema (users/subscriptions/entitlement_overrides) already
+    applied -- same rationale as db_conn above (no live Postgres/Neon
+    access here or in CI)."""
+    conn = sqlite3.connect(":memory:")
+    create_sqlite_accounts_schema(conn)
     yield conn
     conn.close()
 

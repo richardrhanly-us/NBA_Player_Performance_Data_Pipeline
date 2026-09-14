@@ -93,3 +93,74 @@ def create_sqlite_prediction_schema(conn) -> None:
     for statement in SQLITE_SCHEMA_STATEMENTS:
         cur.execute(statement)
     conn.commit()
+
+
+# Step 11: SQLite-compatible mirror of
+# migrations/0002_create_accounts_and_entitlements.sql, same rationale as
+# SQLITE_SCHEMA_STATEMENTS above -- no live Postgres/Neon access here or
+# in CI. Kept side-by-side and reviewed together with the real migration;
+# only dialect-specific syntax differs (BIGSERIAL -> INTEGER PRIMARY KEY
+# AUTOINCREMENT, TIMESTAMPTZ ... DEFAULT now() -> TEXT ... DEFAULT
+# (datetime('now'))). If this schema and the real migration ever diverge,
+# keep them in sync whenever one changes.
+ACCOUNTS_SQLITE_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS users (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        email               TEXT NOT NULL,
+        display_name        TEXT,
+        auth_provider       TEXT NOT NULL,
+        auth_subject        TEXT NOT NULL,
+        is_active           BOOLEAN NOT NULL DEFAULT 1,
+        created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (auth_provider, auth_subject)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
+    """
+    CREATE TABLE IF NOT EXISTS subscriptions (
+        id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id                     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider                    TEXT NOT NULL DEFAULT 'none',
+        provider_customer_id        TEXT,
+        provider_subscription_id    TEXT,
+        plan_key                    TEXT NOT NULL,
+        status                      TEXT NOT NULL CHECK (
+            status IN ('active', 'trialing', 'past_due', 'canceled', 'incomplete', 'none')
+        ),
+        current_period_start        TEXT,
+        current_period_end          TEXT,
+        cancel_at_period_end        BOOLEAN NOT NULL DEFAULT 0,
+        created_at                  TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at                  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_subscriptions_provider_subscription_id ON subscriptions(provider_subscription_id)",
+    """
+    CREATE TABLE IF NOT EXISTS entitlement_overrides (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        override_tier       TEXT NOT NULL CHECK (override_tier IN ('FREE', 'PRO', 'ADMIN')),
+        enabled             BOOLEAN NOT NULL DEFAULT 1,
+        reason              TEXT,
+        expires_at          TEXT,
+        created_by          TEXT,
+        created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_entitlement_overrides_user_id ON entitlement_overrides(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_entitlement_overrides_user_enabled ON entitlement_overrides(user_id, enabled)",
+)
+
+
+def create_sqlite_accounts_schema(conn) -> None:
+    """Applies ACCOUNTS_SQLITE_SCHEMA_STATEMENTS to a sqlite3 connection
+    (in addition to, or independent of, create_sqlite_prediction_schema)
+    and enables foreign-key enforcement."""
+    conn.execute("PRAGMA foreign_keys = ON")
+    cur = conn.cursor()
+    for statement in ACCOUNTS_SQLITE_SCHEMA_STATEMENTS:
+        cur.execute(statement)
+    conn.commit()
