@@ -63,6 +63,11 @@ def _streamlit_secret(name: str) -> str | None:
     try:
         import streamlit as st
 
+        print(
+            "[AUTH DEBUG] loaded secret keys:",
+            sorted(str(key) for key in st.secrets.keys()),
+        )
+
         exists = name in st.secrets
         print(f"[AUTH DEBUG] st.secrets contains {name}: {exists}")
 
