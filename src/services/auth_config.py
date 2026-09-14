@@ -59,12 +59,27 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _streamlit_secret(name: str) -> str | None:
+    try:
+        import streamlit as st
+
+        value = st.secrets.get(name)
+        if value:
+            return str(value)
+    except Exception:
+        pass
+
+    return None
+
+
 def supabase_url() -> str | None:
-    return os.environ.get("SUPABASE_URL") or None
+    return os.environ.get("SUPABASE_URL") or _streamlit_secret("SUPABASE_URL")
 
 
 def supabase_anon_key() -> str | None:
-    return os.environ.get("SUPABASE_ANON_KEY") or None
+    return os.environ.get("SUPABASE_ANON_KEY") or _streamlit_secret(
+        "SUPABASE_ANON_KEY"
+    )
 
 
 def is_supabase_configured() -> bool:
