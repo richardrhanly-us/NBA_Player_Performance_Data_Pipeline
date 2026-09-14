@@ -30,6 +30,18 @@ def get_prediction_db_connection():
     scripts/pregame_pipeline.py already use for the existing Postgres/Neon
     database. Raises a clear error if it isn't configured, rather than
     failing with an opaque KeyError deep inside psycopg.
+
+    Step 14: a failed psycopg.connect() call is caught and re-raised as a
+    generic RuntimeError rather than left to propagate as-is -- a raw
+    psycopg connection error can embed the DSN (including the password)
+    in its message, and several callers (apps/publicapp.py,
+    apps/adminapp.py) display `str(exception)` directly to the page on a
+    connection failure. Centralizing the "never leak the DSN" guarantee
+    here means every caller gets it automatically, rather than needing
+    to remember to sanitize the message at each of the many call sites.
+    The original exception is preserved via `from e` for anyone logging
+    the full traceback (see src/services/observability.py), just never
+    shown via str() on the new exception.
     """
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
@@ -39,7 +51,10 @@ def get_prediction_db_connection():
         )
     import psycopg
 
-    return psycopg.connect(database_url)
+    try:
+        return psycopg.connect(database_url)
+    except Exception as e:
+        raise RuntimeError("Could not connect to the prediction-history database.") from e
 
 
 def is_postgres_connection(conn) -> bool:

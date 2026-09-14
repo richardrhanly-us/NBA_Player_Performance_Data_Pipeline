@@ -43,19 +43,43 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 
+from src.services import readiness
 from src.services.billing_provider import (
     BillingNotConfiguredError,
     WebhookVerificationError,
     get_billing_provider,
 )
+from src.services.observability import get_logger, log_event
+
+_logger = get_logger("webhook_service")
 
 app = FastAPI(title="NBA Player Performance Pipeline -- Billing Webhook")
 
 
 @app.get("/health")
 def health() -> dict:
+    """Liveness only -- 'is this process running'. Never touches config,
+    the database, or Stripe. See /ready for an actual readiness check."""
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready() -> JSONResponse:
+    """
+    Readiness -- config valid, DB reachable, required schema present,
+    Stripe config present (Step 14 Phase 3). Deliberately does NOT call
+    Stripe itself (there is nothing meaningful to check there beyond
+    "is the secret set", which is a config check, not a network call) --
+    only a real Postgres connection + schema check, which is the one
+    check in src/services/readiness.py that isn't free. Returns 200 when
+    ready, 503 otherwise, with a minimal machine-readable body that never
+    includes secrets or raw exception text.
+    """
+    report = readiness.check_webhook_service_readiness(deep=True)
+    status_code = 200 if report.is_ready else 503
+    return JSONResponse(status_code=status_code, content=report.to_dict())
 
 
 @app.post("/stripe/webhook")
@@ -72,15 +96,27 @@ async def stripe_webhook(request: Request) -> Response:
         # Never echo the payload/signature back, and never log the
         # webhook secret or payload contents (see
         # tests/test_step13_static_guards.py's token/secret-logging guards).
+        log_event(_logger, "webhook.rejected", severity="warning", reason="invalid_signature")
         return Response(status_code=400, content="Invalid signature")
     except BillingNotConfiguredError:
         # Deployed without STRIPE_WEBHOOK_SECRET set -- a configuration
         # problem to fix, not something Stripe should retry forever.
+        log_event(_logger, "webhook.rejected", severity="error", reason="not_configured")
         return Response(status_code=503, content="Webhook not configured")
     except Exception:
-        # Any unexpected failure: never leak internals to the caller.
-        # Returning 500 tells Stripe to retry, which is the safe default
-        # for a transient failure (e.g. the database was briefly down).
+        # Any unexpected failure: never leak internals to the caller or
+        # the logs. Returning 500 tells Stripe to retry, which is the
+        # safe default for a transient failure (e.g. the database was
+        # briefly down).
+        log_event(_logger, "webhook.rejected", severity="error", reason="unexpected_failure")
         return Response(status_code=500, content="Internal error")
 
+    log_event(
+        _logger,
+        "webhook.handled",
+        severity="info" if result.get("status") == "processed" else "warning",
+        stripe_event_id=result.get("event_id"),
+        event_type=result.get("event_type"),
+        status=result.get("status"),
+    )
     return Response(status_code=200, content=json.dumps(result), media_type="application/json")

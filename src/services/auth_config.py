@@ -32,7 +32,13 @@ Environment variables (see the Step 12 report for full documentation):
                                           ENVIRONMENT=production
                                           themselves; nothing here
                                           guesses it from platform
-                                          fingerprints.
+                                          fingerprints. (Step 14: this
+                                          read now lives in
+                                          src/services/environment.py,
+                                          the single APP_ENV source of
+                                          truth shared with readiness
+                                          checks -- is_production_hint_set()
+                                          below just delegates to it.)
     LEGACY_ADMIN_KEY_ENABLED          -- must be "true" for the legacy
                                           admin_key bootstrap fallback to
                                           be offered at all, even if a
@@ -42,6 +48,8 @@ Environment variables (see the Step 12 report for full documentation):
 from __future__ import annotations
 
 import os
+
+from src.services import environment
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -77,8 +85,7 @@ def is_dev_auth_forced() -> bool:
 
 
 def is_production_hint_set() -> bool:
-    value = (os.environ.get("ENVIRONMENT") or os.environ.get("APP_ENV") or "").strip().lower()
-    return value in ("production", "prod")
+    return environment.is_production()
 
 
 def can_use_dev_auth() -> bool:

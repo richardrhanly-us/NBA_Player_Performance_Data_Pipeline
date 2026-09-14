@@ -25,7 +25,11 @@ AUTH_ENV_VAR_NAMES = (
 # auth_session.py is allowed one narrow exception: ADMIN_KEY / admin_key
 # secrets access, documented in its own module docstring as the one
 # place st.secrets is read (auth_config.py has no Streamlit import).
-ENV_VAR_ALLOWED_FILES = ("src/services/auth_config.py",)
+# Step 14: ENVIRONMENT/APP_ENV moved to src/services/environment.py (the
+# shared APP_ENV classification also used by readiness checks) --
+# auth_config.py now delegates to it rather than reading those two
+# itself, so environment.py is allowed too.
+ENV_VAR_ALLOWED_FILES = ("src/services/auth_config.py", "src/services/environment.py")
 
 TOKEN_FIELD_NAMES = ("access_token", "refresh_token")
 

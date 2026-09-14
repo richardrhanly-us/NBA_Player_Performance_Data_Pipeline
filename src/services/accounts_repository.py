@@ -355,6 +355,65 @@ def get_stripe_event(conn, stripe_event_id: str):
     return _row_to_dict(cur, cur.fetchone())
 
 
+def list_recent_stripe_events(conn, *, limit: int = 50):
+    """Step 14 Phase 5: operational visibility into webhook processing --
+    never returns raw webhook payloads (those are never stored at all;
+    only Stripe's event id/type and this app's own processing outcome
+    are persisted -- see migrations/0003_..._stripe_events.sql)."""
+    cur = _execute(
+        conn,
+        "SELECT stripe_event_id, event_type, received_at, processed_at, "
+        "processing_status, error_message FROM stripe_events "
+        "ORDER BY received_at DESC LIMIT ?",
+        (limit,),
+    )
+    columns = [d[0] for d in cur.description]
+    return [dict(zip(columns, row)) for row in cur.fetchall()]
+
+
+def get_stripe_event_summary(conn) -> dict:
+    """Step 14 Phase 5: 'how many events received/succeeded/failed,
+    last successful, last failed' -- one small, cheap read for an
+    operational dashboard. Counts are over the full stripe_events
+    history (it's an append-only ledger, never pruned by this app)."""
+    cur = _execute(
+        conn, "SELECT processing_status, COUNT(*) FROM stripe_events GROUP BY processing_status"
+    )
+    counts = {row[0]: row[1] for row in cur.fetchall()}
+
+    cur = _execute(
+        conn,
+        "SELECT stripe_event_id, event_type, processed_at FROM stripe_events "
+        "WHERE processing_status = ? ORDER BY processed_at DESC LIMIT 1",
+        ("processed",),
+    )
+    last_processed = cur.fetchone()
+
+    cur = _execute(
+        conn,
+        "SELECT stripe_event_id, event_type, processed_at, error_message FROM stripe_events "
+        "WHERE processing_status = ? ORDER BY processed_at DESC LIMIT 1",
+        ("failed",),
+    )
+    last_failed = cur.fetchone()
+
+    return {
+        "received_count": sum(counts.values()),
+        "processed_count": counts.get("processed", 0),
+        "failed_count": counts.get("failed", 0),
+        "pending_count": counts.get("received", 0),
+        "last_processed_event_id": last_processed[0] if last_processed else None,
+        "last_processed_event_type": last_processed[1] if last_processed else None,
+        "last_processed_at": last_processed[2] if last_processed else None,
+        "last_failed_event_id": last_failed[0] if last_failed else None,
+        "last_failed_event_type": last_failed[1] if last_failed else None,
+        "last_failed_at": last_failed[2] if last_failed else None,
+        "last_failed_error_summary": (
+            str(last_failed[3])[:200] if last_failed and last_failed[3] else None
+        ),
+    }
+
+
 # ---------------------------------------------------------------------------
 # entitlement_overrides
 # ---------------------------------------------------------------------------

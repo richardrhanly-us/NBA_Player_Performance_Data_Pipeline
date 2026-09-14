@@ -66,6 +66,9 @@ from src.services.auth_providers import (
     SupabaseAuthProvider,
     get_auth_provider,
 )
+from src.services.observability import get_logger, log_event
+
+_logger = get_logger("auth")
 
 _SESSION_KEY = "_auth_session"
 _LEGACY_ADMIN_KEY = "_legacy_admin_ok"
@@ -147,13 +150,17 @@ def _ensure_valid_supabase_session(session: dict) -> dict | None:
     if expires_at is not None and now >= (expires_at - _TOKEN_EXPIRY_LEEWAY_SECONDS):
         refresh_token = session.get("refresh_token")
         if not refresh_token:
+            log_event(_logger, "auth.session_expired", severity="warning", reason="no_refresh_token")
             return None
         try:
             result = provider.refresh(refresh_token)
         except AuthError:
+            log_event(_logger, "auth.session_expired", severity="warning", reason="refresh_failed")
             return None
         if result.auth_subject != session.get("auth_subject"):
+            log_event(_logger, "auth.session_expired", severity="error", reason="refresh_identity_mismatch")
             return None  # never trust a mismatched identity
+        log_event(_logger, "auth.session_refreshed", auth_subject=result.auth_subject)
         return _session_dict_from_result(result)
 
     last_verified_at = session.get("last_verified_at") or 0.0
@@ -161,8 +168,10 @@ def _ensure_valid_supabase_session(session: dict) -> dict | None:
         try:
             result = provider.get_user(session["access_token"])
         except AuthError:
+            log_event(_logger, "auth.session_expired", severity="warning", reason="revalidation_failed")
             return None
         if result.auth_subject != session.get("auth_subject"):
+            log_event(_logger, "auth.session_expired", severity="error", reason="revalidation_identity_mismatch")
             return None  # never trust a mismatched identity
         refreshed = dict(session)
         refreshed["email"] = result.email
@@ -251,9 +260,11 @@ def sign_in(email: str, password: str) -> str | None:
     try:
         result = get_auth_provider().sign_in(email, password)
     except (AuthError, AuthNotConfiguredError) as e:
+        log_event(_logger, "auth.sign_in_failed", severity="warning", reason=str(e))
         return str(e)
     st.session_state[_SESSION_KEY] = _session_dict_from_result(result)
     st.session_state[_SESSION_EXPIRED_FLAG] = False
+    log_event(_logger, "auth.sign_in_succeeded", auth_provider=result.auth_provider)
     return None
 
 

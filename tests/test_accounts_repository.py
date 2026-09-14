@@ -366,3 +366,55 @@ def test_mark_stripe_event_failed_records_error_message(accounts_db_conn):
 
 def test_get_stripe_event_returns_none_for_unknown_event(accounts_db_conn):
     assert repo.get_stripe_event(accounts_db_conn, "evt_does_not_exist") is None
+
+
+# ---------------------------------------------------------------------------
+# Step 14: webhook operational visibility
+# ---------------------------------------------------------------------------
+
+def test_stripe_event_summary_with_no_events(accounts_db_conn):
+    summary = repo.get_stripe_event_summary(accounts_db_conn)
+    assert summary["received_count"] == 0
+    assert summary["processed_count"] == 0
+    assert summary["failed_count"] == 0
+    assert summary["last_processed_event_id"] is None
+    assert summary["last_failed_event_id"] is None
+
+
+def test_stripe_event_summary_counts_by_status(accounts_db_conn):
+    repo.try_claim_stripe_event(accounts_db_conn, "evt_1", "checkout.session.completed")
+    repo.mark_stripe_event_processed(accounts_db_conn, "evt_1")
+    repo.try_claim_stripe_event(accounts_db_conn, "evt_2", "customer.subscription.updated")
+    repo.mark_stripe_event_failed(accounts_db_conn, "evt_2", "could not resolve user")
+    repo.try_claim_stripe_event(accounts_db_conn, "evt_3", "invoice.payment_succeeded")
+
+    summary = repo.get_stripe_event_summary(accounts_db_conn)
+    assert summary["received_count"] == 3
+    assert summary["processed_count"] == 1
+    assert summary["failed_count"] == 1
+    assert summary["pending_count"] == 1
+    assert summary["last_processed_event_id"] == "evt_1"
+    assert summary["last_failed_event_id"] == "evt_2"
+    assert summary["last_failed_error_summary"] == "could not resolve user"
+
+
+def test_stripe_event_summary_truncates_long_error_messages(accounts_db_conn):
+    repo.try_claim_stripe_event(accounts_db_conn, "evt_1", "customer.subscription.updated")
+    repo.mark_stripe_event_failed(accounts_db_conn, "evt_1", "x" * 5000)
+    summary = repo.get_stripe_event_summary(accounts_db_conn)
+    assert len(summary["last_failed_error_summary"]) <= 200
+
+
+def test_list_recent_stripe_events_orders_most_recent_first(accounts_db_conn):
+    repo.try_claim_stripe_event(accounts_db_conn, "evt_1", "checkout.session.completed")
+    repo.try_claim_stripe_event(accounts_db_conn, "evt_2", "customer.subscription.updated")
+    events = repo.list_recent_stripe_events(accounts_db_conn)
+    assert len(events) == 2
+    assert {e["stripe_event_id"] for e in events} == {"evt_1", "evt_2"}
+
+
+def test_list_recent_stripe_events_respects_limit(accounts_db_conn):
+    for i in range(5):
+        repo.try_claim_stripe_event(accounts_db_conn, f"evt_{i}", "checkout.session.completed")
+    events = repo.list_recent_stripe_events(accounts_db_conn, limit=2)
+    assert len(events) == 2

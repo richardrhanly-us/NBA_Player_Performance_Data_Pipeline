@@ -35,6 +35,9 @@ from src.shared_app import (
 # rather than checking st.secrets/session_state itself.
 from src.services import accounts_repository
 from src.services.auth_session import authorize_admin_or_legacy_key, audit_source_label
+from src.services.observability import get_logger, log_event
+
+_ops_logger = get_logger("admin_ops")
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 SHEET_KEY = "1uhjV_Si-qcILfNJbKZrD52y4JnT_GvqQ0hzN7POekQM"
@@ -497,34 +500,52 @@ def get_automation_health():
     from src.services.db_connection import get_prediction_db_connection
     from src.services.migrations import is_schema_ready
     from src.services.orchestration import compute_board_freshness
-    from src.services.prediction_repository import get_latest_run
+    from src.services.prediction_repository import (
+        get_latest_run,
+        get_latest_run_by_status,
+        get_latest_settlement_activity,
+    )
 
     try:
         conn = get_prediction_db_connection()
     except Exception as e:
+        # str(e) here is already a safe, generic message -- see
+        # get_prediction_db_connection()'s docstring (Step 14: it never
+        # lets a raw psycopg/DSN error propagate). Logged at error
+        # severity for operational visibility (Phase 4).
+        log_event(_ops_logger, "automation.db_unavailable", severity="error", detail=str(e))
         return {"configured": True, "error": str(e)}
 
     try:
         schema_ready = is_schema_ready(conn)
-        latest_run = get_latest_run(conn) if schema_ready else None
-        pending_count = None
-        settled_count = None
+        latest_run = None
+        latest_failed_run = None
+        last_settlement_activity = None
+        pending_count = 0
+        settled_count = 0
+
         if schema_ready:
+            latest_run = get_latest_run(conn)
+            # Step 14: surfaced separately from `latest_run` -- a FAILED
+            # run sitting on top of an older SUCCESS is otherwise
+            # invisible to whoever is just looking at "the latest run".
+            latest_failed_run = get_latest_run_by_status(conn, "FAILED")
+            last_settlement_activity = get_latest_settlement_activity(conn)
+
             cur = conn.cursor()
             cur.execute(
                 "SELECT COUNT(*) FROM prediction_snapshots s "
                 "LEFT JOIN prediction_outcomes o ON o.prediction_snapshot_id = s.id "
                 "WHERE o.id IS NULL AND s.prediction_status = 'ok'"
             )
-        pending_row = cur.fetchone()
-        pending_count = pending_row[0] if pending_row is not None else 0
+            pending_row = cur.fetchone()
+            pending_count = pending_row[0] if pending_row is not None else 0
 
-        cur.execute(
-            "SELECT COUNT(*) FROM prediction_outcomes WHERE result_status != 'PENDING'"
-        )
-
-        settled_row = cur.fetchone()
-        settled_count = settled_row[0] if settled_row is not None else 0
+            cur.execute(
+                "SELECT COUNT(*) FROM prediction_outcomes WHERE result_status != 'PENDING'"
+            )
+            settled_row = cur.fetchone()
+            settled_count = settled_row[0] if settled_row is not None else 0
 
     finally:
         conn.close()
@@ -545,6 +566,8 @@ def get_automation_health():
         "schema_ready": schema_ready,
         "automation_enabled": AUTOMATION_ENABLED,
         "latest_run": latest_run,
+        "latest_failed_run": latest_failed_run,
+        "last_settlement_activity": last_settlement_activity,
         "pending_count": pending_count,
         "settled_count": settled_count,
         "freshness_status": freshness_status.value if freshness_status else None,
@@ -748,6 +771,17 @@ with overview_tab:
             if latest_run is not None
             else "no run persisted yet"
         )
+
+        latest_failed_run_raw = automation_health.get("latest_failed_run")
+        latest_failed_run = latest_failed_run_raw if isinstance(latest_failed_run_raw, dict) else None
+        failed_run_summary = (
+            f"run #{latest_failed_run['id']} · generated {latest_failed_run['generated_at_utc']}"
+            if latest_failed_run is not None
+            else "none"
+        )
+
+        last_settlement = automation_health.get("last_settlement_activity") or "never"
+
         st.markdown(
             f"""
             <div class="status-box">
@@ -755,6 +789,8 @@ with overview_tab:
                 <div><span class="muted">Freshness:</span> {automation_health.get("freshness_status") or "UNKNOWN"}
                     &nbsp;-&nbsp; {automation_health.get("freshness_message") or ""}</div>
                 <div><span class="muted">Latest run:</span> {run_summary}</div>
+                <div><span class="muted">Latest failed run:</span> {failed_run_summary}</div>
+                <div><span class="muted">Last settlement activity:</span> {last_settlement}</div>
                 <div><span class="muted">Pending settlement:</span> {automation_health.get("pending_count")}
                     &nbsp; | &nbsp; <span class="muted">Settled to date:</span> {automation_health.get("settled_count")}</div>
             </div>
@@ -1865,5 +1901,53 @@ with users_tab:
             st.error(f"Could not load Users & Access: {e}")
         finally:
             accounts_conn.close()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # -----------------------------------------------------------------
+    # Step 14 Phase 5: read-only billing/webhook operational visibility.
+    # Never displays raw webhook payloads -- only Stripe event ids/types
+    # and this app's own processing outcome (see
+    # migrations/0003_..._stripe_events.sql and
+    # accounts_repository.get_stripe_event_summary/list_recent_stripe_events).
+    # -----------------------------------------------------------------
+    st.markdown('<div class="section-card"><div class="section-title">Billing Health (Stripe Webhooks)</div>', unsafe_allow_html=True)
+
+    billing_health_conn = get_accounts_db_connection_or_none()
+    if billing_health_conn is None:
+        st.info("Billing health is unavailable: no DATABASE_URL configured, or the accounts schema has not been migrated yet.")
+    else:
+        try:
+            summary = accounts_repository.get_stripe_event_summary(billing_health_conn)
+
+            health_col1, health_col2, health_col3, health_col4 = st.columns(4)
+            health_col1.metric("Events Received", summary["received_count"])
+            health_col2.metric("Processed", summary["processed_count"])
+            health_col3.metric("Failed", summary["failed_count"])
+            health_col4.metric("Pending", summary["pending_count"])
+
+            st.markdown(
+                f"""
+                <div class="status-box">
+                    <div><span class="muted">Last processed:</span> {summary['last_processed_event_type'] or 'N/A'}
+                        {f"at {format_last_update(summary['last_processed_at'])}" if summary['last_processed_at'] else ""}</div>
+                    <div><span class="muted">Last failed:</span> {summary['last_failed_event_type'] or 'N/A'}
+                        {f"at {format_last_update(summary['last_failed_at'])}" if summary['last_failed_at'] else ""}</div>
+                    <div><span class="muted">Last failure reason:</span> {summary['last_failed_error_summary'] or 'N/A'}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            with st.expander("Recent Stripe events (last 50)"):
+                recent_events = accounts_repository.list_recent_stripe_events(billing_health_conn, limit=50)
+                if not recent_events:
+                    st.info("No Stripe events received yet.")
+                else:
+                    st.dataframe(pd.DataFrame(recent_events), use_container_width=True, hide_index=True, height=320)
+        except Exception as e:
+            st.error(f"Could not load billing health: {e}")
+        finally:
+            billing_health_conn.close()
 
     st.markdown("</div>", unsafe_allow_html=True)

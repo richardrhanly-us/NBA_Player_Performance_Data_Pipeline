@@ -666,3 +666,69 @@ def test_admin_override_survives_subscription_cancellation(provider, accounts_db
         user=user_row, subscription=sub, active_override=override
     )
     assert tier == AccessTier.ADMIN
+
+
+# ---------------------------------------------------------------------------
+# Step 14: structured logging around webhook handling
+# ---------------------------------------------------------------------------
+
+def test_webhook_processing_emits_structured_log(provider, accounts_db_conn, free_user, monkeypatch, caplog):
+    repo.set_user_stripe_customer_id(accounts_db_conn, free_user["id"], "cus_123")
+    _stub_construct_event(
+        provider,
+        monkeypatch,
+        {
+            "id": "evt_logged_1",
+            "type": "customer.subscription.created",
+            "data": {
+                "object": {
+                    "id": "sub_abc",
+                    "customer": "cus_123",
+                    "status": "active",
+                    "current_period_start": None,
+                    "current_period_end": None,
+                    "cancel_at_period_end": False,
+                    "items": {"data": []},
+                    "metadata": {},
+                }
+            },
+        },
+    )
+
+    with caplog.at_level("INFO", logger="nba_pipeline.billing"):
+        provider.handle_webhook_event(payload=b"{}", signature="good-sig")
+
+    processed_records = [r for r in caplog.records if "webhook.processed" in r.message]
+    assert len(processed_records) == 1
+    assert "evt_logged_1" in processed_records[0].message
+
+
+def test_webhook_failure_log_never_contains_secret_key(provider, accounts_db_conn, monkeypatch, caplog):
+    _stub_construct_event(
+        provider,
+        monkeypatch,
+        {
+            "id": "evt_logged_fail",
+            "type": "customer.subscription.updated",
+            "data": {
+                "object": {
+                    "id": "sub_orphan",
+                    "customer": "cus_does_not_exist",
+                    "status": "active",
+                    "current_period_start": None,
+                    "current_period_end": None,
+                    "cancel_at_period_end": False,
+                    "items": {"data": []},
+                    "metadata": {},
+                }
+            },
+        },
+    )
+
+    with caplog.at_level("ERROR", logger="nba_pipeline.billing"):
+        provider.handle_webhook_event(payload=b"{}", signature="good-sig")
+
+    failed_records = [r for r in caplog.records if "webhook.failed" in r.message]
+    assert len(failed_records) == 1
+    assert "sk_test_x" not in failed_records[0].message
+    assert "whsec_test" not in failed_records[0].message

@@ -235,6 +235,43 @@ def get_latest_run(conn):
     return _row_to_dict(cur, row) if row is not None else None
 
 
+def get_latest_run_by_status(conn, run_status: str):
+    """
+    Step 14: same idea as get_latest_run(), scoped to one run_status
+    ('SUCCESS', 'PARTIAL', or 'FAILED') -- lets operational tooling
+    (apps/adminapp.py's automation health section) show "latest
+    successful run" and "latest failed run" separately, since
+    get_latest_run() alone can't distinguish a healthy latest run from a
+    failed one sitting on top of an older success. Read-only, no
+    automation implications.
+    """
+    cur = _execute(
+        conn,
+        "SELECT * FROM prediction_runs WHERE run_status = ? ORDER BY generated_at_utc DESC LIMIT 1",
+        (run_status,),
+    )
+    row = cur.fetchone()
+    return _row_to_dict(cur, row) if row is not None else None
+
+
+def get_latest_settlement_activity(conn):
+    """
+    Step 14: the most recent settled_at timestamp across all
+    prediction_outcomes -- a lightweight proxy for "when did settlement
+    last actually do something", since there is no separate
+    settlement-run record (see the Step 14 report's Phase 6 section for
+    why a new automation_runs/settlement_runs table was judged
+    unnecessary: prediction_runs already covers the prediction side, and
+    this single MAX(settled_at) query covers the settlement side without
+    a new table). Returns None if nothing has ever been settled.
+    """
+    cur = _execute(
+        conn, "SELECT MAX(settled_at) FROM prediction_outcomes WHERE settled_at IS NOT NULL"
+    )
+    row = cur.fetchone()
+    return row[0] if row is not None else None
+
+
 def get_snapshots_for_run(conn, run_id: int) -> list:
     cur = _execute(
         conn,

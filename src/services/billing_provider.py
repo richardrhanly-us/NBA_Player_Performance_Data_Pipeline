@@ -27,6 +27,9 @@ from typing import Any, Optional
 
 from src.domain.accounts import AccessTier
 from src.services import accounts_repository, billing_config, entitlement_service
+from src.services.observability import get_logger, log_event
+
+_logger = get_logger("billing")
 
 
 class BillingNotConfiguredError(RuntimeError):
@@ -339,14 +342,39 @@ class StripeBillingProvider(BillingProvider):
         try:
             claimed = accounts_repository.try_claim_stripe_event(conn, event_id, event_type)
             if not claimed:
+                log_event(
+                    _logger,
+                    "webhook.duplicate",
+                    stripe_event_id=event_id,
+                    event_type=event_type,
+                )
                 return {"status": "duplicate", "event_id": event_id, "event_type": event_type}
 
             try:
                 self._dispatch_event(conn, event_type, event["data"]["object"])
                 accounts_repository.mark_stripe_event_processed(conn, event_id)
+                log_event(
+                    _logger,
+                    "webhook.processed",
+                    stripe_event_id=event_id,
+                    event_type=event_type,
+                )
                 return {"status": "processed", "event_id": event_id, "event_type": event_type}
             except Exception as e:  # noqa: BLE001 -- captured for diagnosis, never re-raised with secrets
+                # `str(e)` here is always an application-raised message
+                # (e.g. "Could not resolve a local user...") -- never a
+                # raw Stripe SDK/DB driver exception that could embed a
+                # credential (see _resolve_user_id and
+                # StripeBillingProvider's other internal raises).
                 accounts_repository.mark_stripe_event_failed(conn, event_id, str(e))
+                log_event(
+                    _logger,
+                    "webhook.failed",
+                    severity="error",
+                    stripe_event_id=event_id,
+                    event_type=event_type,
+                    error=str(e),
+                )
                 return {"status": "failed", "event_id": event_id, "event_type": event_type}
         finally:
             conn.close()
