@@ -14,14 +14,6 @@ import streamlit as st
 from google.oauth2.service_account import Credentials
 from scipy.stats import norm
 from streamlit_autorefresh import st_autorefresh
-
-st.sidebar.caption(
-    f"SUPABASE_URL loaded: {bool(os.environ.get('SUPABASE_URL'))}"
-)
-st.sidebar.caption(
-    f"SUPABASE_ANON_KEY loaded: {bool(os.environ.get('SUPABASE_ANON_KEY'))}"
-)
-
 from src.services.performance_service import compute_performance_summary
 from src.services.prediction_repository import (
     compute_board_idempotency_key,
