@@ -4,12 +4,21 @@ read. src/services/auth_providers.py and src/services/auth_session.py
 call these functions instead of touching os.environ directly -- see
 tests/test_step12_static_guards.py for the guard that enforces this.
 
-This module deliberately has NO Streamlit import (kept pure/testable,
-same rationale as auth_providers.py) and NO st.secrets access -- the one
-exception, the legacy admin_key's *value*, still lives in
-auth_session.py because reading st.secrets requires a Streamlit runtime.
-What lives here is the boolean gate (`is_legacy_admin_key_enabled`) that
-decides whether that value is even looked up at all.
+This module has no *unconditional* Streamlit import (kept pure/testable
+by default, same rationale as auth_providers.py) -- but Supabase's URL/
+anon key are read with a lazy, best-effort st.secrets fallback (see
+_streamlit_secret() below), because Streamlit Community Cloud's Secrets
+manager populates st.secrets, NOT os.environ. An app that only checked
+os.environ would see Supabase as "not configured" on exactly the
+platform this project deploys to, even with the secrets correctly set
+in the dashboard -- this was a real production incident (see git
+history: "Support Streamlit secrets for Supabase auth configuration",
+briefly reverted by "Remove temporary Supabase auth debugging" while
+cleaning up unrelated print-debugging, restored in Step 15). Env vars
+still take priority (useful for webhook_service and local dev, neither
+of which has st.secrets at all). The legacy admin_key's value follows
+the same pattern in auth_session.py; is_legacy_admin_key_enabled() below
+is the boolean gate that decides whether that value is even looked up.
 
 Environment variables (see the Step 12 report for full documentation):
 
@@ -60,6 +69,11 @@ def _env_bool(name: str, default: bool = False) -> bool:
 
 
 def _streamlit_secret(name: str) -> str | None:
+    """Best-effort st.secrets lookup -- returns None (never raises) when
+    there is no Streamlit runtime (tests, webhook_service, scripts) or
+    the key simply isn't set. This is the ONLY reason this module ever
+    imports streamlit, and it's always lazy/guarded, never at module
+    import time."""
     try:
         import streamlit as st
 
@@ -73,11 +87,11 @@ def _streamlit_secret(name: str) -> str | None:
 
 
 def supabase_url() -> str | None:
-    return os.environ.get("SUPABASE_URL") or None
+    return os.environ.get("SUPABASE_URL") or _streamlit_secret("SUPABASE_URL")
 
 
 def supabase_anon_key() -> str | None:
-    return os.environ.get("SUPABASE_ANON_KEY") or None
+    return os.environ.get("SUPABASE_ANON_KEY") or _streamlit_secret("SUPABASE_ANON_KEY")
 
 
 def is_supabase_configured() -> bool:

@@ -1,3 +1,5 @@
+import streamlit as st
+
 from src.services import auth_config
 
 
@@ -95,3 +97,60 @@ def test_admin_key_from_env(monkeypatch):
     assert auth_config.admin_key_from_env() is None
     monkeypatch.setenv("ADMIN_KEY", "some-secret-key")
     assert auth_config.admin_key_from_env() == "some-secret-key"
+
+
+# ---------------------------------------------------------------------------
+# Step 15 regression: Supabase config must fall back to st.secrets when the
+# env var isn't set. This was the actual, real production incident behind
+# "supabase login issue" -- a fix (commit b39b8a3) was added, then
+# accidentally reverted (commit ead1586) while removing unrelated debug
+# print statements, leaving `_streamlit_secret()` defined but never called.
+# Streamlit Community Cloud's Secrets manager populates st.secrets, NOT
+# os.environ, so without this fallback a Supabase-via-dashboard-secrets
+# deployment silently looks "unconfigured" to this app.
+# ---------------------------------------------------------------------------
+
+def test_supabase_url_falls_back_to_streamlit_secrets(monkeypatch):
+    _clear(monkeypatch)
+    monkeypatch.setattr(st, "secrets", {"SUPABASE_URL": "https://from-secrets.supabase.co"})
+    assert auth_config.supabase_url() == "https://from-secrets.supabase.co"
+
+
+def test_supabase_anon_key_falls_back_to_streamlit_secrets(monkeypatch):
+    _clear(monkeypatch)
+    monkeypatch.setattr(st, "secrets", {"SUPABASE_ANON_KEY": "anon-key-from-secrets"})
+    assert auth_config.supabase_anon_key() == "anon-key-from-secrets"
+
+
+def test_supabase_configured_via_streamlit_secrets_only(monkeypatch):
+    """The exact real-world case: a Streamlit Cloud deployment with
+    Supabase configured only in the Secrets manager, no OS env vars at
+    all -- is_supabase_configured() must return True."""
+    _clear(monkeypatch)
+    monkeypatch.setattr(
+        st,
+        "secrets",
+        {
+            "SUPABASE_URL": "https://from-secrets.supabase.co",
+            "SUPABASE_ANON_KEY": "anon-key-from-secrets",
+        },
+    )
+    assert auth_config.is_supabase_configured() is True
+
+
+def test_env_var_takes_priority_over_streamlit_secrets(monkeypatch):
+    _clear(monkeypatch)
+    monkeypatch.setenv("SUPABASE_URL", "https://from-env.supabase.co")
+    monkeypatch.setattr(st, "secrets", {"SUPABASE_URL": "https://from-secrets.supabase.co"})
+    assert auth_config.supabase_url() == "https://from-env.supabase.co"
+
+
+def test_missing_secrets_file_does_not_raise(monkeypatch):
+    """No secrets.toml at all (this test environment's actual state) --
+    Streamlit raises StreamlitSecretNotFoundError internally; the
+    fallback must swallow it and return None, not crash config
+    resolution for every other caller."""
+    _clear(monkeypatch)
+    assert auth_config.supabase_url() is None
+    assert auth_config.supabase_anon_key() is None
+    assert auth_config.is_supabase_configured() is False

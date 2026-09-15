@@ -120,7 +120,7 @@ def normalize_name(name: str) -> str:
     replacements = {
         ".": "",
         ",": "",
-        "’": "'",
+        "â€™": "'",
         "'": "",
         "-": " ",
     }
@@ -613,26 +613,44 @@ def get_live_player_stats(player_name, provider: BasketballDataProvider | None =
 
 
 def fetch_upcoming_nba_events(api_key):
+    # Step 15: requests.Response.raise_for_status() (and connection-level
+    # failures from requests/urllib3) embed the FULL request URL --
+    # including the `apiKey` query param -- in the exception's own
+    # message (verified: "401 Client Error: ... for url: https://...
+    # ?apiKey=<value>"). apps/publicapp.py displays this exception's
+    # str() directly to anonymous public users on failure
+    # (`st.warning(f"Could not load sportsbook line: {e}")`), so a bad/
+    # expired/rate-limited ODDS_API_KEY would otherwise leak the raw key
+    # to the page. Every failure mode here is converted to a generic,
+    # secret-free RuntimeError before it can propagate -- mirrors the
+    # same "sanitize at the source" fix Step 14 applied to
+    # src/services/db_connection.py for DATABASE_URL.
     url = "https://api.the-odds-api.com/v4/sports/basketball_nba/events"
-    resp = requests.get(url, params={"apiKey": api_key}, timeout=20)
-    resp.raise_for_status()
+    try:
+        resp = requests.get(url, params={"apiKey": api_key}, timeout=20)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        raise RuntimeError("Could not reach the odds data provider.") from e
     return resp.json()
 
 
 def fetch_player_points_market(api_key, event_id, bookmaker_key):
     url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/events/{event_id}/odds"
-    resp = requests.get(
-        url,
-        params={
-            "apiKey": api_key,
-            "regions": "us",
-            "markets": "player_points",
-            "bookmakers": bookmaker_key,
-            "oddsFormat": "american"
-        },
-        timeout=20
-    )
-    resp.raise_for_status()
+    try:
+        resp = requests.get(
+            url,
+            params={
+                "apiKey": api_key,
+                "regions": "us",
+                "markets": "player_points",
+                "bookmakers": bookmaker_key,
+                "oddsFormat": "american"
+            },
+            timeout=20
+        )
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        raise RuntimeError("Could not reach the odds data provider.") from e
     return resp.json()
 
 
@@ -841,7 +859,7 @@ def get_top_plays_today_df(api_key, debug=False):
         print("[PIPELINE] No props returned", flush=True)
         return pd.DataFrame()
 
-    
+
     props_df["normalized_name"] = props_df["player_name_raw"].apply(normalize_name)
     props_df = props_df.drop_duplicates(subset=["normalized_name"]).copy()
 
@@ -857,8 +875,8 @@ def get_top_plays_today_df(api_key, debug=False):
     skipped_empty_features = 0
     skipped_missing_line = 0
     skipped_below_edge = 0
-    
-    
+
+
     status_box = None
     progress_bar = None
 
@@ -883,7 +901,7 @@ def get_top_plays_today_df(api_key, debug=False):
                 unsafe_allow_html=True
             )
             progress_bar.progress(i / total_rows)
-        
+
         actual_name = resolve_player_name(raw_name, normalized_to_actual)
         if not actual_name:
             skipped_unresolved_name += 1
@@ -932,11 +950,11 @@ def get_top_plays_today_df(api_key, debug=False):
 
         sportsbook_name = row.get("bookmaker", "")
         sportsbook_key = row.get("bookmaker_key", "").lower()
-        
+
         rows.append({
             "PLAYER_NAME": actual_name,
 
-            
+
             "GAME_DATE": format_event_game_date(row.get("commence_time", "")),
             "last_update": row.get("last_update", ""),
 
@@ -954,7 +972,7 @@ def get_top_plays_today_df(api_key, debug=False):
         })
 
         time.sleep(0.5)
-    
+
     if debug and status_box is not None:
         status_box.markdown(
             """
@@ -972,7 +990,7 @@ def get_top_plays_today_df(api_key, debug=False):
         status_box.empty()
         progress_bar.empty()
 
-    
+
     print(
         "[PIPELINE] Skip summary | "
         f"unresolved_name={skipped_unresolved_name} | "
@@ -983,9 +1001,9 @@ def get_top_plays_today_df(api_key, debug=False):
         f"below_edge={skipped_below_edge}",
         flush=True
     )
-    
+
     print(f"[PIPELINE] Rows that passed edge threshold: {len(rows)}", flush=True)
-    
+
     if not rows:
         return pd.DataFrame()
 
