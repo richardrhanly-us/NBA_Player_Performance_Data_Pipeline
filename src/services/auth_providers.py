@@ -217,9 +217,17 @@ class SupabaseAuthProvider(AuthProvider):
         self._post("/auth/v1/recover", {"email": email})
 
     def _to_result(self, data: dict, *, require_session: bool) -> AuthResult:
+        # Step 16 (real-deployment finding): when email confirmation is
+        # required, POST /auth/v1/signup returns the new user as a BARE
+        # top-level object (`{"id": ..., "email": ..., ...}`) rather than
+        # nested under a "user" key the way session-issuing responses
+        # are. Verified against a real Supabase project: the user is
+        # genuinely created (visible in the dashboard) even though the
+        # nested lookup below would otherwise find nothing and this
+        # would misreport a successful signup as a hard failure.
         user = data.get("user") or {}
-        subject = user.get("id")
-        email = user.get("email")
+        subject = user.get("id") or data.get("id")
+        email = user.get("email") or data.get("email")
         access_token = data.get("access_token")
 
         if not access_token and not require_session:

@@ -207,6 +207,42 @@ def test_supabase_sign_up_pending_email_confirmation(monkeypatch):
         provider.sign_up("person@example.com", "hunter2")
 
 
+def test_supabase_sign_up_pending_email_confirmation_bare_top_level_shape(monkeypatch):
+    """Step 16 real-deployment finding: Supabase's actual
+    /auth/v1/signup response, when email confirmation is required,
+    returns the new user as a BARE top-level object -- no "user" key,
+    no "access_token" key at all -- not the nested shape the test above
+    assumes. Verified against a real Supabase project (playbook-analytics-auth):
+    the account was genuinely created there even though the app
+    previously misreported this exact response as a hard failure."""
+    provider = SupabaseAuthProvider("https://example.supabase.co", "anon-key")
+
+    def fake_post(url, json, headers, timeout):
+        assert "/auth/v1/signup" in url
+        return _FakeResponse(
+            200,
+            {
+                "id": "99eeda78-f150-4ade-87ab-a724e3242279",
+                "aud": "authenticated",
+                "role": "authenticated",
+                "email": json["email"],
+                "email_confirmed_at": None,
+                "phone": "",
+                "confirmed_at": None,
+                "last_sign_in_at": None,
+                "app_metadata": {"provider": "email", "providers": ["email"]},
+                "user_metadata": {},
+                "identities": [],
+                "created_at": "2026-09-15T01:44:11.000000Z",
+                "updated_at": "2026-09-15T01:44:11.000000Z",
+            },
+        )
+
+    monkeypatch.setattr("requests.post", fake_post)
+    with pytest.raises(EmailConfirmationRequiredError):
+        provider.sign_up("richardrhanly@gmail.com", "hunter2")
+
+
 def test_supabase_sign_up_with_immediate_session(monkeypatch):
     provider = SupabaseAuthProvider("https://example.supabase.co", "anon-key")
 
